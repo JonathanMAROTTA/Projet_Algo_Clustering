@@ -26,76 +26,73 @@ def load_instance(filename):
 
     return distance, points
 
-
-def comparaison_generator(points, groups, register, distance):
-    last_efficient_x, group_next_id = 0, 0
-    segments, points_comparaison = [], 0
-
-    for i, point in enumerate(points):
-        if i not in register.keys():
-            x, y = point.coordinates
-
-            # Search last efficient index
-            while last_efficient_x < len(points) and points[last_efficient_x].coordinates[0] <= x - distance:
-                last_efficient_x += 1
-
-            # Create new group
-            groups[group_next_id] = set([i])
-            register[i] = group_next_id
-
-            group_next_id += 1
-
-            j = last_efficient_x
-            while j < len(points) and points[j].coordinates[0] <= x + distance:
-                if j != i and y - distance <= points[j].coordinates[1] <= y + distance:
-                    points_comparaison += 1
-                    if point.distance_to(points[j]) <= distance: 
-                        
-                        yield i, j, point, points[j]
-
-                    segments.append(Segment([point, points[j]]))
-                j += 1
-
-    # Display
-    print('Comparaison de point :', points_comparaison)
-    tycat(points, *segments)
-
 def print_components_sizes(distance, points):
     """
     affichage des tailles triees de chaque composante
     """
     points.sort()
 
+    last_efficient_x = 0
     groups, register = {}, {}
 
-    circles, segments = [], []
+    pts2, seg1, seg2, nb_comparaison = [], [], [], 0
 
-    for current_id, aside_id, point, aside in comparaison_generator(points, groups, register, distance):
-        if aside_id in register.keys() and current_id not in groups[register[aside_id]]:
-            aside_group_id = register[aside_id]
-            aside_group = groups[aside_group_id]
+    for i, point in enumerate(points):
+        nb_comparaison += 1
+        if i not in register.keys():
+            x, y = point.coordinates
 
-            current_group_id = register[current_id]
+            # Search last efficient index
+            print(i, last_efficient_x)
+            while last_efficient_x < len(points) and points[last_efficient_x].coordinates[0] <= x - distance:
+                nb_comparaison += 1
+                last_efficient_x += 1
 
-            # Réasignation des groupes
-            for point_id in groups[current_group_id]:
-                register[point_id] = aside_group_id
-                aside_group.add(point_id)
+            # Create new group
+            groups[i] = set([i])
+            register[i] = i
 
-            del groups[current_group_id]
+            j = last_efficient_x
+            while j < len(points) and points[j].coordinates[0] <= x + distance:
+                nb_comparaison += 1
+                aside_x, aside_y = points[j].coordinates
 
-        register[aside_id] = register[current_id]
-        groups[register[current_id]].add(aside_id)
+                nb_comparaison += 1
+                if y - distance <= aside_y <= y + distance and point.distance_to(points[j]) <= distance:
+                    nb_comparaison += 1
+                    if j in register.keys() and i not in groups[register[j]]:
+                        aside_group_id = register[j]
+                        aside_group = groups[aside_group_id]
 
-        segments.append(Segment([point, aside]))
+                        current_group_id = register[i]
 
-        #cercle = [Point([distance * cos(c*pi/10), distance * sin(c*pi/10)]) + point for c in range(20)]
-        #circles.append(cercle)
+                        # Réasignation des groupes
+                        for point_id in groups[current_group_id]:
+                            register[point_id] = aside_group_id
+                            aside_group.add(point_id)
 
-        #segments.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
+                        del groups[current_group_id]
+
+                    register[j] = register[i]
+                    groups[register[i]].add(j)
+
+                    seg1.append(Segment([point, points[j]]))
+    
+                seg2.append(Segment([point, points[j]]))
+                j += 1
+
+            pts2.append(point)
+            cercle = [Point([distance * cos(c*pi/10), distance * sin(c*pi/10)]) + point for c in range(20)]
+            seg2.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
+
+
 
     # Display
-    tycat(points, *segments)
+    print('Comparaison de point :', nb_comparaison)
+    tycat(pts2, *seg2)
+
+    # Display
+    tycat(points, *seg1)
 
     result = list(len(group) for group in groups.values())
     result.sort(reverse=True)
