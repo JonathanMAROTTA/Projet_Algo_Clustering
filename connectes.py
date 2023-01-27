@@ -35,7 +35,7 @@ def print_components_sizes(distance, points):
 
     points.sort()
 
-    groups = {}
+    groups, result_ids = {}, set()
 
     pts2, seg1, seg2, nb_comparaison, cmp = [], [], [], 0, [0,0]
 
@@ -47,6 +47,7 @@ def print_components_sizes(distance, points):
 
             # Create new group
             groups[i] = set([i])
+            result_ids.add(i)
 
             for direction in [-1,1]:
                 j = i + direction
@@ -62,6 +63,9 @@ def print_components_sizes(distance, points):
                             current_group_ids = groups[j]
                             for k in current_group_ids:
                                 groups[k] = groups[i]
+
+                                if k in result_ids:
+                                    result_ids.remove(k)
                         else:
                             groups[j] = groups[i]
                             groups[i].add(j)
@@ -84,7 +88,7 @@ def print_components_sizes(distance, points):
     # Display
     tycat(points, *seg1)
 
-    result = list((len(group) for group in (set((frozenset(group) for group in groups.values())))))
+    result = list((len(groups[group_id]) for group_id in result_ids))
     result.sort(reverse=True)
 
     print(result)
