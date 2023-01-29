@@ -100,7 +100,7 @@ def print_components_sizes(distance, points):
                     j += 1
 
             # Look at new
-            j = isolated[-1] if len(isolated) > 0 else i + 1
+            j = isolated[-1] + 1 if len(isolated) > 0 else i + 1
             while j < len(points) and points[j].coordinates[0] <= x + distance:
                 nb_comparaison += 1
 
@@ -123,7 +123,7 @@ def print_components_sizes(distance, points):
             pts2.append(point)
             cercle = [Point([distance * cos(c*pi/10), distance * sin(c*pi/10)]) + point for c in range(20)]
             seg2.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
-            #seg1.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
+            seg1.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
 
 
     # Display
@@ -139,7 +139,7 @@ def print_components_sizes(distance, points):
     print(f"Performance : {end - start:.5f}")
     print("Nombre de points :",len(points))
     print('Nombre de if :', nb_comparaison)
-    print("Nombre d'analyse :", cmp[0])
+    print("Nombre de points observés :", cmp[0])
     print("Comparaison / point :", cmp[1] / cmp[0])
 
 
