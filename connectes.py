@@ -37,7 +37,6 @@ def print_components_sizes(distance, points):
 
     groups, result_ids = {}, set()
     grouped, isolated = [], []
-    register = {}
 
     pts2, seg1, seg2, nb_comparaison, cmp = [], [], [], 0, [0,0]
 
@@ -90,7 +89,6 @@ def print_components_sizes(distance, points):
                     groups[isolated[j]] = groups[i]
 
                     groups[i].add(isolated[j])
-                    register[isolated[j]] = i
 
                     seg1.append(Segment([point, points[isolated[j]]]))
 
@@ -109,7 +107,6 @@ def print_components_sizes(distance, points):
                 if point.distance_to(points[j]) <= distance:
                     groups[j] = groups[i]
                     groups[i].add(j)
-                    register[j] = i
 
                     seg1.append(Segment([point, points[j]]))
 
