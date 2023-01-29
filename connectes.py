@@ -52,7 +52,7 @@ def print_components_sizes(distance, points):
 
             for point_id in grouped:
 
-                if point.distance_to(points[point_id]) <= distance:
+                if point_id not in groups[i] and point.distance_to(points[point_id]) <= distance:
                     groups[i].update(groups[point_id])
 
             for k in groups[i]:
@@ -64,12 +64,13 @@ def print_components_sizes(distance, points):
             groups[i].add(i)
             result_ids.add(i)
 
-            # Look at asolated
+            # Look at isolated
             j = 0
             while j < len(isolated):
 
                 if point.distance_to(points[isolated[j]]) <= distance:
                     groups[isolated[j]] = groups[i]
+
                     groups[i].add(isolated[j])
 
                     grouped.append(isolated[j])
@@ -95,7 +96,7 @@ def print_components_sizes(distance, points):
     result.sort(reverse=True)
 
     print(result)
-
+    
 
 def main():
     """
