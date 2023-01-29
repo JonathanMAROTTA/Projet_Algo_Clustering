@@ -34,7 +34,7 @@ def print_components_sizes(distance, points):
     points.sort()
 
     groups, result_ids = {}, set()
-    grouped, isolated = [], [0]
+    grouped, isolated = [], []
 
     for i, point in enumerate(points):
 
