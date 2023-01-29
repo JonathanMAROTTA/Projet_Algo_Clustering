@@ -36,9 +36,14 @@ def print_components_sizes(distance, points):
     points.sort()
 
     groups, result_ids = {}, set()
-    grouped, isolated = [], [0]
+    grouped, isolated = [], []
+    register = {}
 
     for i, point in enumerate(points):
+<<<<<<< HEAD
+=======
+        nb_comparaison += 1
+>>>>>>> edc780c (Update isolated minimum)
 
         if i not in groups.keys():
             x, y = point.coordinates
@@ -47,7 +52,7 @@ def print_components_sizes(distance, points):
             while len(grouped) > 0 and points[grouped[0]].coordinates[0] < x - distance:
                 nb_comparaison += 1
                 del grouped[0]
-            while len(isolated) > 0 and points[isolated[0]].coordinates[0] <= x:
+            while len(isolated) > 0 and points[isolated[0]].coordinates[0] < x:
                 nb_comparaison += 1
                 del isolated[0]
 
@@ -57,7 +62,7 @@ def print_components_sizes(distance, points):
             for point_id in grouped:
                 cmp[1] += 1
                 nb_comparaison += 1
-                if point.distance_to(points[point_id]) <= distance:
+                if point_id not in groups[i] and y - distance <= points[point_id].coordinates[1] <= y + distance and point.distance_to(points[point_id]) <= distance:
                     groups[i].update(groups[point_id])
                     seg1.append(Segment([point, points[point_id]]))
 
@@ -73,6 +78,7 @@ def print_components_sizes(distance, points):
             result_ids.add(i)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
             for direction in [-1,1]:
                 j = i + direction
                 while 0 <= j < len(points) and x - distance <= points[j].coordinates[0] <= x + distance:
@@ -83,6 +89,9 @@ def print_components_sizes(distance, points):
                             groups[i].update(groups[j])
 =======
             # Look at asolated
+=======
+            # Look at isolated
+>>>>>>> edc780c (Update isolated minimum)
             j = 0
             while j < len(isolated):
                 nb_comparaison += 1
@@ -92,9 +101,11 @@ def print_components_sizes(distance, points):
                 cmp[1] += 1
 
                 nb_comparaison += 1
-                if point.distance_to(points[isolated[j]]) <= distance:
+                if y - distance <= points[isolated[j]].coordinates[1] <= y + distance and point.distance_to(points[isolated[j]]) <= distance:
                     groups[isolated[j]] = groups[i]
+
                     groups[i].add(isolated[j])
+                    register[isolated[j]] = i
 
 <<<<<<< HEAD
                     j += direction
@@ -108,15 +119,16 @@ def print_components_sizes(distance, points):
                     j += 1
 
             # Look at new
-            j = isolated[-1] + 1 if len(isolated) > 0 else i + 1
+            j = isolated[-1] if len(isolated) > 0 else i + 1
             while j < len(points) and points[j].coordinates[0] <= x + distance:
                 nb_comparaison += 1
 
                 cmp[1] += 1
                 nb_comparaison += 1
-                if point.distance_to(points[j]) <= distance:
+                if y - distance <= points[j].coordinates[1] <= y + distance and point.distance_to(points[j]) <= distance:
                     groups[j] = groups[i]
                     groups[i].add(j)
+                    register[j] = i
 
                     seg1.append(Segment([point, points[j]]))
 
@@ -130,10 +142,11 @@ def print_components_sizes(distance, points):
             pts2.append(point)
             cercle = [Point([distance * cos(c*pi/10), distance * sin(c*pi/10)]) + point for c in range(20)]
             seg2.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
+            #seg1.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
 
 
     # Display
-    tycat(points, *seg2)
+    tycat(pts2, *seg2)
     tycat(points, *seg1)
 >>>>>>> 54602b4 (Add grouped && isolated)
 
@@ -147,7 +160,8 @@ def print_components_sizes(distance, points):
 <<<<<<< HEAD
 =======
     print("Nombre de points :",len(points))
-    print('Comparaison de point :', nb_comparaison)
+    print('Nombre de if :', nb_comparaison)
+    print("Nombre d'analyse :", cmp[0])
     print("Comparaison / point :", cmp[1] / cmp[0])
 >>>>>>> 54602b4 (Add grouped && isolated)
 
