@@ -62,7 +62,7 @@ def print_components_sizes(distance, points):
             for point_id in grouped:
                 cmp[1] += 1
                 nb_comparaison += 1
-                if point_id not in groups[i] and y - distance <= points[point_id].coordinates[1] <= y + distance and point.distance_to(points[point_id]) <= distance:
+                if point_id not in groups[i] and point.distance_to(points[point_id]) <= distance:
                     groups[i].update(groups[point_id])
                     seg1.append(Segment([point, points[point_id]]))
 
@@ -86,7 +86,7 @@ def print_components_sizes(distance, points):
                 cmp[1] += 1
 
                 nb_comparaison += 1
-                if y - distance <= points[isolated[j]].coordinates[1] <= y + distance and point.distance_to(points[isolated[j]]) <= distance:
+                if point.distance_to(points[isolated[j]]) <= distance:
                     groups[isolated[j]] = groups[i]
 
                     groups[i].add(isolated[j])
@@ -106,7 +106,7 @@ def print_components_sizes(distance, points):
 
                 cmp[1] += 1
                 nb_comparaison += 1
-                if y - distance <= points[j].coordinates[1] <= y + distance and point.distance_to(points[j]) <= distance:
+                if point.distance_to(points[j]) <= distance:
                     groups[j] = groups[i]
                     groups[i].add(j)
                     register[j] = i
@@ -127,8 +127,8 @@ def print_components_sizes(distance, points):
 
 
     # Display
-    tycat(pts2, *seg2)
-    tycat(points, *seg1)
+    #tycat(pts2, *seg2)
+    #tycat(points, *seg1)
 
     result = list((len(groups[group_id]) for group_id in result_ids))
     result.sort(reverse=True)
