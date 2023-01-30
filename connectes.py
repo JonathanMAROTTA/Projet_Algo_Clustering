@@ -32,60 +32,96 @@ def print_components_sizes(distance, points):
     affichage des tailles triees de chaque composante
     """
     start = perf_counter()
+    perf_stats = [0,0,0,0,0]
 
     points.sort()
 
     groups, result_ids = {}, set()
     grouped, isolated = [], []
 
-    pts2, seg1, seg2, nb_comparaison, cmp = [], [], [], 0, [0,0]
+    grouped_index, isolated_index = 0, 0
+
+    current_group = set()
+
+    pts2, seg1, seg2, cmp = [], [], [], [0,0]
 
     for i, point in enumerate(points):
-        nb_comparaison += 1
 
-        if i not in groups.keys():
-            cmp[0] += 1
-            x, y = point.coordinates
+        cmp[0] += 1
+        has_been_grouped = i in groups.keys()
+        x, y = point.coordinates
 
-            # Remove inefficient
-            while len(grouped) > 0 and points[grouped[0]].coordinates[0] < x - distance:
-                nb_comparaison += 1
-                del grouped[0]
-            while len(isolated) > 0 and points[isolated[0]].coordinates[0] < x:
-                nb_comparaison += 1
-                del isolated[0]
+        # Remove inefficient
+        time = perf_counter()
+        while grouped_index < len(grouped) and points[grouped[grouped_index]].coordinates[0] < x - distance:
+            grouped_index += 1
+        perf_stats[0] += perf_counter() - time
 
-            # Look at grouped
-            groups[i] = set([])
+        # Look at grouped
+        time = perf_counter()
 
-            for point_id in grouped:
-                cmp[1] += 1
-                nb_comparaison += 1
-                if point_id not in groups[i] and point.distance_to(points[point_id]) <= distance:
-                    groups[i].update(groups[point_id])
-                    seg1.append(Segment([point, points[point_id]]))
+        if not has_been_grouped:
+            groups[i] = set([i])
 
-                seg2.append(Segment([point, points[point_id]]))
+        current_group.clear()
+        max_group_count, max_group_id = len(groups[i]), i
 
-            for k in groups[i]:
-                groups[k] = groups[i]
+        j = grouped_index
+        while j < len(grouped) and points[grouped[j]].coordinates[0] <= x + (not has_been_grouped) * distance:
+            cmp[1] += 1
 
-                if k in result_ids:
-                    result_ids.remove(k)
+            point_id = grouped[j]
+            if point_id not in groups[i] and y - distance <= points[point_id].coordinates[1] <= y + distance and point.distance_to(points[point_id]) <= distance:
+                
+                group_count = len(groups[point_id])
+                if group_count > max_group_count:
+                    current_group.update(groups[max_group_id])
 
+                    max_group_id = point_id
+                    max_group_count = group_count
+                else:
+                    current_group.update(groups[point_id])
+
+                seg1.append(Segment([point, points[point_id]]))
+
+            seg2.append(Segment([point, points[point_id]]))
+            j += 1
+
+        time2 = perf_counter()
+        if max_group_count > 0:
+            groups[i].add(i)
+
+            for k in current_group:
+                groups[k] = groups[max_group_id]
+
+            groups[i] = groups[max_group_id]
+            groups[i].update(current_group)
+
+            result_ids.difference_update(groups[max_group_id])       
+            result_ids.add(max_group_id)
+        else:
             groups[i].add(i)
             result_ids.add(i)
 
-            # Look at isolated
-            j = 0
-            while j < len(isolated):
-                nb_comparaison += 1
+        perf_stats[4] += perf_counter() - time2
 
+        perf_stats[1] += perf_counter() - time
+
+        if not has_been_grouped:
+            # Remove inefficient
+            time = perf_counter()
+            while isolated_index < len(isolated) and points[isolated[isolated_index]].coordinates[0] <= x:
+                isolated_index += 1
+            perf_stats[0] += perf_counter() - time
+
+            # Look at isolated
+            time = perf_counter()
+            j = isolated_index
+            while j < len(isolated):
                 seg2.append(Segment([point, points[isolated[j]]]))
                 cmp[1] += 1
 
-                nb_comparaison += 1
-                if point.distance_to(points[isolated[j]]) <= distance:
+                if y - distance <= points[isolated[j]].coordinates[1] <= y + distance and point.distance_to(points[isolated[j]]) <= distance:
                     groups[isolated[j]] = groups[i]
 
                     groups[i].add(isolated[j])
@@ -96,15 +132,16 @@ def print_components_sizes(distance, points):
                     del isolated[j]
                 else:
                     j += 1
+            perf_stats[2] += perf_counter() - time
 
             # Look at new
-            j = isolated[-1] + 1 if len(isolated) > 0 else i + 1
+            time = perf_counter()
+            j = isolated[-1] + 1 if isolated_index < len(isolated) else i + 1
+            j = max(j, grouped[-1] + 1)  if grouped_index < len(grouped) else j
             while j < len(points) and points[j].coordinates[0] <= x + distance:
-                nb_comparaison += 1
-
                 cmp[1] += 1
-                nb_comparaison += 1
-                if point.distance_to(points[j]) <= distance:
+                
+                if y - distance <= points[j].coordinates[1] <= y + distance and point.distance_to(points[j]) <= distance:
                     groups[j] = groups[i]
                     groups[i].add(j)
 
@@ -116,16 +153,14 @@ def print_components_sizes(distance, points):
 
                 seg2.append(Segment([point, points[j]]))
                 j += 1
+                
+            grouped.sort()
+            perf_stats[3] += perf_counter() - time
 
-            pts2.append(point)
-            cercle = [Point([distance * cos(c*pi/10), distance * sin(c*pi/10)]) + point for c in range(20)]
-            seg2.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
-            seg1.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
-
-
-    # Display
-    #tycat(pts2, *seg2)
-    #tycat(points, *seg1)
+        pts2.append(point)
+        cercle = [Point([distance * cos(c*pi/10), distance * sin(c*pi/10)]) + point for c in range(20)]
+        seg2.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
+        #seg1.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
 
     result = list((len(groups[group_id]) for group_id in result_ids))
     result.sort(reverse=True)
@@ -133,11 +168,21 @@ def print_components_sizes(distance, points):
     print(result)
 
     end = perf_counter()
-    print(f"Performance : {end - start:.5f}")
+    print(f"Performances")
+    print(f"- Total : {end - start:.5f}")
+    print(f"- Suppressions : {(perf_stats[0] * 100 / (end - start)):.2f}%")
+    print(f"- Groupes : {(perf_stats[1] * 100 / (end - start)):.2f}% (réécriture: {(perf_stats[4] * 100 / (end - start)):.2f}%)")
+    print(f"- Isolés : {(perf_stats[2] * 100 / (end - start)):.2f}%")
+    print(f"- Nouveaux : {(perf_stats[3] * 100 / (end - start)):.2f}%")
     print("Nombre de points :",len(points))
-    print('Nombre de if :', nb_comparaison)
     print("Nombre de points observés :", cmp[0])
     print("Comparaison / point :", cmp[1] / cmp[0])
+
+    # Display
+    tycat(pts2, *seg2)
+    tycat(points, *seg1)
+
+    print(result)
 
 
 def main():
