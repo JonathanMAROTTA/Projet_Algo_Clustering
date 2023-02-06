@@ -27,162 +27,353 @@ def load_instance(filename):
 
     return distance, points
 
+# -- Fonctions tests --
+def separation(*sizes):
+    print('  ', end='')
+
+    for config in sizes:
+        for _ in range(config[1]):
+            print('-' * config[0], 'x', sep='', end='')
+    print('')
+def head(size, *others):
+    print('     |', end='')
+
+    for i in range(size):
+        print(f" {i:2} |", end="")
+
+    for name in others:
+        print(f" {name} |", end='')
+    print('')
+def set_color(text, color):
+    code = '0'
+
+    if color == 'black':
+        code = "30"
+    elif color == 'red':
+        code = "31"
+    elif color == 'green':
+        code = "32"
+    elif color == 'yellow':
+        code = "33"
+    elif color == 'blue':
+        code = "34"
+    elif color == 'magenta':
+        code = "35"
+    elif color == 'cyan':
+        code = "36"
+    elif color == 'white':
+        code = "37"
+    elif color == 'gray':
+        code = "90"
+
+    return f"\x1b[{code}m{text}\x1b[0m"
+
+def table(x_length, y_length):
+    head(x_length)
+    separation((3, 1), (4, x_length))
+
+    for y in range(y_length):
+        print(f"  {y:2} | ", end='') 
+
+        for x in range(x_length):
+            yield x, y
+
+            print(f" | ", end='')
+
+        print('')
+
+        separation((3, 1), (4, x_length))
+# ---------------------
+
 def print_components_sizes(distance, points):
     """
     affichage des tailles triees de chaque composante
     """
     start = perf_counter()
-    perf_stats = [0,0,0,0,0]
+    perf_stats = [0,0,0,0,0,0]
+    
+    # Tests's list
+    tests = [[0 for _ in range(len(points))] for _ in range(len(points))]
+    writing = [0 for _ in points]
 
     points.sort()
 
-    groups, result_ids = {}, set()
-    grouped, isolated = [], []
+    groups, group_result = {}, set()
+    
+    obs_groups  , obs_groups_idx   = [], 0 
+    obs_isolates, obs_isolates_idx = [], 0
 
-    grouped_index, isolated_index = 0, 0
+    group_buffer = set()
 
-    current_group = set()
+    # Dictonary's key is the boolean : j.y < j.y
+    isolates_links = {
+        True : { 'near': set(), 'far': set() },
+        False: { 'near': set(), 'far': set() }
+    }
 
-    pts2, seg1, seg2, cmp = [], [], [], [0,0]
+    pts2, seg1, seg2 = [], [], []
 
     for i, point in enumerate(points):
 
-        cmp[0] += 1
-        has_been_grouped = i in groups.keys()
-        x, y = point.coordinates
+        if i not in groups.keys():
 
-        # Remove inefficient
-        time = perf_counter()
-        while grouped_index < len(grouped) and points[grouped[grouped_index]].coordinates[0] < x - distance:
-            grouped_index += 1
-        perf_stats[0] += perf_counter() - time
+            # x------------------x
+            # |  Initialization  |
+            # x------------------x
 
-        # Look at grouped
-        time = perf_counter()
+            time = perf_counter()
 
-        if not has_been_grouped:
+            x, y = point.coordinates
             groups[i] = set([i])
 
-        current_group.clear()
-        max_group_count, max_group_id = len(groups[i]), i
+            # Clear buffers
+            group_buffer .clear()
 
-        j = grouped_index
-        while j < len(grouped) and points[grouped[j]].coordinates[0] <= x + (not has_been_grouped) * distance:
-            cmp[1] += 1
+            isolates_links[True ]['near'].clear()
+            isolates_links[True ]['far' ].clear()
+            isolates_links[False]['near'].clear()
+            isolates_links[False]['far' ].clear()
 
-            point_id = grouped[j]
-            if point_id not in groups[i] and y - distance <= points[point_id].coordinates[1] <= y + distance and point.distance_to(points[point_id]) <= distance:
-                
-                group_count = len(groups[point_id])
-                if group_count > max_group_count:
-                    current_group.update(groups[max_group_id])
+            # Remove inefficients
+            while obs_groups_idx   < len(obs_groups  ) and points[obs_groups  [obs_groups_idx  ]].coordinates[0] < x - distance:
+                obs_groups_idx   += 1
+            while obs_isolates_idx < len(obs_isolates) and points[obs_isolates[obs_isolates_idx]].coordinates[0] <= x:
+                obs_isolates_idx += 1
 
-                    max_group_id = point_id
-                    max_group_count = group_count
-                else:
-                    current_group.update(groups[point_id])
-
-                seg1.append(Segment([point, points[point_id]]))
-
-            seg2.append(Segment([point, points[point_id]]))
-            j += 1
-
-        time2 = perf_counter()
-        if max_group_count > 0:
-            groups[i].add(i)
-
-            for k in current_group:
-                groups[k] = groups[max_group_id]
-
-            groups[i] = groups[max_group_id]
-            groups[i].update(current_group)
-
-            result_ids.difference_update(groups[max_group_id])       
-            result_ids.add(max_group_id)
-        else:
-            groups[i].add(i)
-            result_ids.add(i)
-
-        perf_stats[4] += perf_counter() - time2
-
-        perf_stats[1] += perf_counter() - time
-
-        if not has_been_grouped:
-            # Remove inefficient
-            time = perf_counter()
-            while isolated_index < len(isolated) and points[isolated[isolated_index]].coordinates[0] <= x:
-                isolated_index += 1
             perf_stats[0] += perf_counter() - time
 
-            # Look at isolated
+            # Boundaries
+            old_groups_boundary = len(obs_groups)
+
+
+            # x------------x
+            # |  Isolates  |
+            # x------------x
+
             time = perf_counter()
-            j = isolated_index
-            while j < len(isolated):
-                seg2.append(Segment([point, points[isolated[j]]]))
-                cmp[1] += 1
 
-                if y - distance <= points[isolated[j]].coordinates[1] <= y + distance and point.distance_to(points[isolated[j]]) <= distance:
-                    groups[isolated[j]] = groups[i]
+            # Observations
+            isolate_id = obs_isolates_idx
+            while isolate_id < len(obs_isolates):
+                j = obs_isolates[isolate_id]
 
-                    groups[i].add(isolated[j])
+                #seg2.append(Segment([point, points[j]]))
+                tests[i][j] += 1
 
-                    seg1.append(Segment([point, points[isolated[j]]]))
+                isolate_y = points[j].coordinates[1]
 
-                    grouped.append(isolated[j])
-                    del isolated[j]
-                else:
-                    j += 1
-            perf_stats[2] += perf_counter() - time
+                if y - distance <= isolate_y <= y + distance and point.distance_to(points[j]) <= distance:
+                    groups[j] = groups[i]
+                    groups[i].add(j)
 
-            # Look at new
-            time = perf_counter()
-            j = isolated[-1] + 1 if isolated_index < len(isolated) else i + 1
-            j = max(j, grouped[-1] + 1)  if grouped_index < len(grouped) else j
+                    obs_groups.append(j)
+                    isolates_links[isolate_y < y]['near'].add(j)
+
+                    del obs_isolates[isolate_id]
+
+                    seg1.append(Segment([point, points[j]]))
+                    #seg2.append(Segment([point, points[j]]))
+
+                isolate_id += 1
+
+            # Others
+            j = obs_isolates[-1] + 1        if obs_isolates_idx < len(obs_isolates) else i + 1
+            j = max(j, obs_groups[-1] + 1)  if obs_groups_idx   < len(obs_groups  ) else j
+
             while j < len(points) and points[j].coordinates[0] <= x + distance:
-                cmp[1] += 1
+                new_y = points[j].coordinates[1]
                 
-                if y - distance <= points[j].coordinates[1] <= y + distance and point.distance_to(points[j]) <= distance:
+                if y - distance <= new_y <= y + distance and point.distance_to(points[j]) <= distance:
                     groups[j] = groups[i]
                     groups[i].add(j)
 
                     seg1.append(Segment([point, points[j]]))
 
-                    grouped.append(j)
-                else:
-                    isolated.append(j)
+                    obs_groups.append(j)
+                    isolates_links[new_y < y]['near'].add(j)
 
+                    #seg2.append(Segment([point, points[j]]))
+                elif j not in obs_groups:
+                    obs_isolates.append(j)
+
+                tests[i][j] += 1
                 seg2.append(Segment([point, points[j]]))
                 j += 1
-                
-            grouped.sort()
-            perf_stats[3] += perf_counter() - time
 
-        pts2.append(point)
-        cercle = [Point([distance * cos(c*pi/10), distance * sin(c*pi/10)]) + point for c in range(20)]
-        seg2.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
+            obs_groups.sort()
+
+            perf_stats[1] += perf_counter() - time
+
+
+            # x----------x
+            # |  Groups  |
+            # x----------x
+
+            time = perf_counter()
+
+            max_grp_count, max_grp_id = 1, i
+
+            # Observations
+            time2 = perf_counter()
+
+            grp_id = obs_groups_idx
+            while grp_id < old_groups_boundary and points[obs_groups[grp_id]].coordinates[0] <= x + distance:
+
+                j = obs_groups[grp_id]
+                grp_x, grp_y = points[j].coordinates
+
+                if j not in groups[i] and j not in groups[max_grp_id] and j not in group_buffer:
+
+                    tests[i][j] += 1
+
+                    if y - distance <= grp_y <= y + distance and point.distance_to(points[j]) <= distance:
+
+                        grp_count = len(groups[j])
+                        if grp_count > max_grp_count:
+                            group_buffer.update(groups[max_grp_id])
+
+                            max_grp_id, max_grp_count = j, grp_count
+                        else:
+                            group_buffer.update(groups[j])
+
+                        seg1.append(Segment([point, points[j]]))
+
+                    elif y - 2 * distance <= grp_y < y or y < grp_y <= y + 2 * distance:
+                        isolates_links[grp_y < y]['far'].add(j)
+                        #seg2.append(Segment([point, points[j]]))
+
+                    seg2.append(Segment([point, points[j]]))
+                grp_id += 1
+
+            perf_stats[3] += perf_counter() - time2
+
+            # Isolates's links
+            time3 = perf_counter()
+            
+            for near_points in isolates_links.values():
+                near_points['far'].difference_update(groups[i])
+                
+                for j in near_points['near']:
+                    for k in near_points['far']:
+
+                        tests[j][k] += 1
+                        seg2.append(Segment([points[k], points[j]]))
+
+                        if points[k].distance_to(points[j]) <= distance:                        
+
+                            grp_count = len(groups[k])
+                            if grp_count > max_grp_count:
+                                group_buffer.update(groups[max_grp_id])
+
+                                max_grp_id, max_grp_count = k, grp_count
+                            else:
+                                group_buffer.update(groups[k])
+
+                            seg1.append(Segment([points[j], points[k]]))
+                            break
+
+            perf_stats[4] += perf_counter() - time3
+
+            # Fusions
+            time4 = perf_counter()
+
+            if len(group_buffer) > 0:
+                for k in group_buffer:
+                    groups[k] = groups[max_grp_id]
+                    writing[k] += 1
+
+                groups[i] = groups[max_grp_id]
+                groups[i].update(group_buffer)
+
+                group_result.difference_update(groups[max_grp_id])       
+                group_result.add(max_grp_id)
+            else:
+                group_result.add(i)
+
+            perf_stats[5] += perf_counter() - time4
+
+            perf_stats[2] += perf_counter() - time
+            
+
+            pts2.append(point)
+            cercle = [Point([distance * cos(c*pi/10), distance * sin(c*pi/10)]) + point for c in range(20)]
+            seg2.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
         #seg1.append((Segment([p1, p2]) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))))
 
-    result = list((len(groups[group_id]) for group_id in result_ids))
+    result = list((len(groups[group_id]) for group_id in group_result))
     result.sort(reverse=True)
 
-    print(result)
+    print('\n  ', result, sep='', end='\n')
 
-    end = perf_counter()
-    print(f"Performances")
-    print(f"- Total : {end - start:.5f}")
-    print(f"- Suppressions : {(perf_stats[0] * 100 / (end - start)):.2f}%")
-    print(f"- Groupes : {(perf_stats[1] * 100 / (end - start)):.2f}% (réécriture: {(perf_stats[4] * 100 / (end - start)):.2f}%)")
-    print(f"- Isolés : {(perf_stats[2] * 100 / (end - start)):.2f}%")
-    print(f"- Nouveaux : {(perf_stats[3] * 100 / (end - start)):.2f}%")
-    print("Nombre de points :",len(points))
-    print("Nombre de points observés :", cmp[0])
-    print("Comparaison / point :", cmp[1] / cmp[0])
+    delta = perf_counter() - start
+    percent = 100 / delta
+
+    print(f"\n  Performances")
+    print(f"  - Total : {delta:.5f} secondes")
+    print(f"  - Initialisation : {(perf_stats[0] * percent):.2f}%")
+    print(f"  - Isolés : {(perf_stats[1] * percent):.2f}%")
+    print(f"  - Groupes : {(perf_stats[2] * percent):.2f}%")
+    print(f"    * Liens entre groupes: {(perf_stats[3] * 100 / perf_stats[2]):.2f}%")
+    print(f"    * Liens entre isolés: {(perf_stats[4] * 100 / perf_stats[2]):.2f}%")
+    print(f"    * Réécriture: {(perf_stats[5] * 100 / perf_stats[2]):.2f}%")
+    print("  Nombre de points :",len(points), end='\n\n')
 
     # Display
-    tycat(pts2, *seg2)
-    tycat(points, *seg1)
+    make_test = False
 
-    print(result)
+    if make_test:
+        tycat(pts2, *seg2)
+        tycat(points, *seg1)
+
+        print('\n  ', result, sep='', end='\n\n')
+
+        # x---------x
+        # |  Tests  |
+        # x---------x
+
+        total = 0
+
+        for j, i in table(len(points), len(points)):
+
+            total += tests[i][j]
+
+            if i == j:
+                print(set_color('--', 'red'), end='')
+
+            elif tests[i][j] > 0:
+                color = 'yellow'  if tests[j][i] > 0 else \
+                        'gray'    if tests[i][j] > 1 and j in groups[i] else \
+                        'green'   if j in groups[i] else \
+                        'magenta' if tests[i][j] > 1 else 'white'
+
+                print(set_color(f"{tests[i][j]:2}", color), end='')
+            else:
+                print(f"  ", end='')
+
+        print('\n  Total :', total, f"({total * 100 / (len(points) * len(points)):.2f}%)", '\n')
+
+        # Écritures
+        print('')
+        total = 0
+
+        for decimal, step in table(10, len(points) // 10):
+            idx = 10 * step + decimal
+
+            if writing[idx] > 0:
+                total += writing[idx]
+
+                color = 'magenta' if writing[idx] >  7 else \
+                    'red'     if writing[idx] >  5 else \
+                    'yellow'  if writing[idx] >  1 else \
+                    'green'   if writing[idx] == 1 else 'white'
+
+                print(set_color(f"{writing[idx]:2}", color), end='')
+            else:
+                print('  ', end='')
+
+
+        print('\n  Total :', total, '\n')
+        print('  ', result, sep='', end='\n\n')
 
 
 def main():
