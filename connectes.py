@@ -7,7 +7,8 @@ sort and display.
 from math import cos, sin, pi
 from timeit import timeit
 from sys import argv
-from itertools import islice, cycle
+from itertools import islice, cycle, product
+from collections import defaultdict
 from time import perf_counter
 import math
 
@@ -108,34 +109,31 @@ def table(x_length, y_length):
 
 # ---------------------
 
-def remove_inefficients(points, observed, base_id, x, case_y, distance):
+def remove_inefficients(points, groups, register, observed, base_id, x, case_y, distance):
     # Groups
-    if case_y not in observed['groups']:
-        observed['groups'][case_y] = [[], 0]
-    else:
-        obs_points, i = observed['groups'][case_y]
+    obs_points, i = observed['groups'][case_y]
 
-        while i < len(obs_points) and (points[obs_points[i]].coordinates[0] < x - distance or base_id == obs_points[i]):
-            i += 1
+    while i < len(obs_points) and (points[obs_points[i]].coordinates[0] < x - distance or base_id == obs_points[i]):
 
-        observed['groups'][case_y][1] = i
+        groups[register[obs_points[i]]].remove(obs_points[i])
+        del register[obs_points[i]]
+        i += 1
+
+    observed['groups'][case_y][1] = i
 
     # Isolates
-    if case_y not in observed['isolates']:
-        observed['isolates'][case_y] = [[], 0]
-    else:
-        obs_points, i = observed['isolates'][case_y]
+    obs_points, i = observed['isolates'][case_y]
 
-        while i < len(obs_points) and (points[obs_points[i]].coordinates[0] < x or base_id == obs_points[i]):
-            i += 1
+    while i < len(obs_points) and (points[obs_points[i]].coordinates[0] < x or base_id == obs_points[i]):
+        i += 1
 
-        observed['isolates'][case_y][1] = i
+    observed['isolates'][case_y][1] = i
+
 
 def run_clusters(observed, case_y):
     for translation in range(-1, 2):
         yield translation, observed['isolates'][case_y + translation], observed['groups'][case_y + translation]
 
-# A voir
 def run_clusters_points(observed, case_y, key):
     for translation in range(-1, 2):
         cluster_points, i = observed[key][case_y + translation]
@@ -147,6 +145,7 @@ def run_clusters_points(observed, case_y, key):
 
             i = next_i
 
+
 def print_components_sizes(distance, points):
     """
     affichage des tailles triees de chaque composante
@@ -155,58 +154,54 @@ def print_components_sizes(distance, points):
     # |  Initialization  |
     # x------------------x
 
-    # -- Tests --
-    with perf(0) as _:
-        tests   = [[0 for _ in range(len(points))] for _ in range(len(points))]
-        writing =  [0 for _ in points]
+    with perf(0):
+        with perf(7):
+            # -- Tests --
+            # tests   = [[0 for _ in range(len(points))] for _ in range(len(points))]
+            # writing =  [0 for _ in points]
 
-        segments = {
-            'tests': {
-                'circles'      : [],
-                'obs_isolates' : [],
-                'obs_groups'   : [],
-                'isolate_other': [],
-                'isolate_link' : []
-            },
-            'finals': {
-                'groups': []
+            # segments = {
+            #     'tests': {
+            #         'circles'      : [],
+            #         'obs_isolates' : [],
+            #         'obs_groups'   : [],
+            #         'isolate_other': [],
+            #         'isolate_link' : []
+            #     },
+            #     'finals': {
+            #         'groups': []
+            #     }
+            # }
+
+            # -- Graph --
+            register, groups, groups_result = {}, {}, {}
+            near_groups = set()
+
+            observed = { 'groups': defaultdict(lambda: [[], 0]), 'isolates': defaultdict(lambda: [[], 0]) }
+            last_observed_id = 0
+
+            # Dictonary's key is the boolean : j.y < j.y
+            isolates_links = {
+                True : { 'in': set(), 'out': set() },
+                False: { 'in': set(), 'out': set() }
             }
-        }
 
-        # -- Graph --
-        groups, group_result = {}, set()
-        
-        observed = {
-            'groups'  : {},
-            'isolates': {}
-        }
-        last_observed_id = 0
-        old_groups_boundaries = {}
-
-        group_buffer = set()
-
-        # Dictonary's key is the boolean : j.y < j.y
-        isolates_links = {
-            True : { 'in': set(), 'out': set() },
-            False: { 'in': set(), 'out': set() }
-        }
-
-        points.sort()
+            points.sort()
 
         for i, point in enumerate(points):
 
-            if i not in groups.keys():
+            if i not in register.keys():
 
                 # x------------------x
                 # |  Initialization  |
                 # x------------------x
 
-                with perf(1) as _:
+                with perf(1):
                     x, y = point.coordinates
-                    groups[i] = set([i])
 
                     # Clear buffers
-                    group_buffer.clear()
+                    near_groups.clear()
+                    near_groups.add(i)
 
                     for side in isolates_links.values():
                         for category in side.values():
@@ -216,15 +211,56 @@ def print_components_sizes(distance, points):
                     case_y = math.floor(y / distance)
 
                     for translation in range(-1, 2):
-                        remove_inefficients(points, observed, i, x, case_y + translation, distance)
-                        old_groups_boundaries[translation] = len(observed['groups'][case_y + translation][0])
+                        remove_inefficients(points, groups, register, observed, i, x, case_y + translation, distance)
+
+                    # Groups
+                    groups[i] = set([i])
+                    register[i] = i
+
+
+                # x----------x
+                # |  Groups  |
+                # x----------x
+
+                with perf(3):
+
+                    # Clusters
+                    with perf(4):
+                        for j in run_clusters_points(observed, case_y, 'groups'):
+
+                            grp_x, grp_y = points[j].coordinates
+
+                            if register[j] not in near_groups:
+
+                                if point.distance_to(points[j]) <= distance:
+                                    # In distance circle
+
+                                    near_groups.add(register[j])
+
+                                    # segments['finals']['groups'].append((i, j))
+
+                                elif y - 2 * distance <= grp_y < y or y < grp_y <= y + 2 * distance:
+                                    # In double distance circle
+
+                                    isolates_links[grp_y < y]['out'].add(j)
+
+                                # tests[i][j] += 1
+                                # segments['tests']['obs_groups'].append((i, j))
 
 
                 # x------------x
                 # |  Isolates  |
                 # x------------x
 
-                with perf(2) as _:
+                with perf(1):
+
+                    # Updates clusters
+                    while last_observed_id < len(points) and points[last_observed_id].coordinates[0] <= x + distance:
+
+                        observed['isolates'][math.floor(points[last_observed_id].coordinates[1] / distance)][0].append(last_observed_id)
+                        last_observed_id += 1
+
+                with perf(2):
 
                     # Clusters
                     for _, isolates_cluster, group_cluster in run_clusters(observed, case_y):
@@ -237,156 +273,80 @@ def print_components_sizes(distance, points):
                             if y - distance <= isolate_y <= y + distance and point.distance_to(points[j]) <= distance:
                                 # In distance circle
 
-                                groups[j] = groups[i]
                                 groups[i].add(j)
+                                register[j] = i
 
-                                group_cluster[0].append(j)
                                 isolates_links[isolate_y < y]['in'].add(j)
 
+                                group_cluster[0].append(j)
                                 del isolates_points[isolate_id]
 
-                                segments['finals']['groups'].append((i, j))
+                                # segments['finals']['groups'].append((i, j))
                             else:
                                 # Out distance circle
-
                                 isolate_id += 1
 
                             # Tests
-                            tests[i][j] += 1
-                            segments['tests']['obs_isolates'].append((i, j))
-
-                    # Outside clusters
-                    obs_updates = []
-
-                    while last_observed_id < len(points) and points[last_observed_id].coordinates[0] <= x + distance:
-                        j = last_observed_id
-                        new_x, new_y = points[j].coordinates
-                        case_new_y = math.floor(new_y / distance)
-                        
-                        if case_new_y not in observed['groups']:
-                            observed['groups'][case_new_y] = [[], 0]
-
-                        obs_groups = observed['groups'][case_new_y][0]
-
-                        if y - distance <= new_y <= y + distance and point.distance_to(points[j]) <= distance:
-                            # In distance circle
-
-                            groups[j] = groups[i]
-                            groups[i].add(j)
-
-                            obs_groups.append(j)
-                            isolates_links[new_y < y]['in'].add(j)
-
-                            obs_updates.append(case_new_y)
-
-                            segments['finals']['groups'].append((i, j))
-                        elif j not in obs_groups: # A voir
-                            # Out distance circle
-
-                            if case_new_y not in observed['isolates'].keys():
-                                observed['isolates'][case_new_y] = [[j], 0]
-                            else:
-                                observed['isolates'][case_new_y][0].append(j)
-
-                        tests[i][j] += 1
-                        segments['tests']['isolate_other'].append((i, j))
-
-                        last_observed_id += 1
-
-                    # Sort only obs_groups updated
-                    for update_case in obs_updates:
-                        observed['groups'][update_case][0].sort()
+                            # tests[i][j] += 1
+                            # segments['tests']['obs_isolates'].append((i, j))
 
 
                 # x----------x
                 # |  Groups  |
                 # x----------x
 
-                with perf(3) as _:
-                    max_grp_count, max_grp_id = 1, i
-
-                    # Clusters
-                    with perf(4) as _:
-                        for translation, isolates_cluster, group_cluster in run_clusters(observed, case_y):
-                            groups_points, groups_id = group_cluster
-
-                            while groups_id < old_groups_boundaries[translation] and points[groups_points[groups_id]].coordinates[0] <= x + distance:
-
-                                j = groups_points[groups_id]
-                                grp_x, grp_y = points[j].coordinates
-
-                                if j not in groups[i] and j not in groups[max_grp_id] and j not in group_buffer:
-
-                                    if y - distance <= grp_y <= y + distance and point.distance_to(points[j]) <= distance:
-                                        # In distance circle
-
-                                        grp_count = len(groups[j])
-                                        if grp_count > max_grp_count:
-                                            group_buffer.update(groups[max_grp_id])
-
-                                            max_grp_id, max_grp_count = j, grp_count
-                                        else:
-                                            group_buffer.update(groups[j])
-
-                                        segments['finals']['groups'].append((i, j))
-
-                                    elif y - 2 * distance <= grp_y < y or y < grp_y <= y + 2 * distance:
-                                        # In double distance circle
-
-                                        isolates_links[grp_y < y]['out'].add(j)
-
-                                    tests[i][j] += 1
-
-                                    segments['tests']['obs_groups'].append((i, j))
-
-                                groups_id += 1
+                with perf(3):
 
                     # Isolates's links
-                    with perf(5) as _:
+                    with perf(5):
+
                         for in_points in isolates_links.values():
-                            in_points['out'].difference_update(groups[i])
-                            
-                            for j in in_points['in']:
-                                for k in in_points['out']:
 
-                                    tests[j][k] += 1
-                                    segments['tests']['isolate_link'].append((j, k))
+                            for k, j in product(in_points['in'], in_points['out']):
 
-                                    if points[k].distance_to(points[j]) <= distance:                        
-                                        # In distance circle
+                                # tests[k][j] += 1
+                                # segments['tests']['isolate_link'].append((k, j))
 
-                                        grp_count = len(groups[k])
-                                        if grp_count > max_grp_count:
-                                            group_buffer.update(groups[max_grp_id])
+                                if points[j].distance_to(points[k]) <= distance:                        
+                                    # In distance circle
 
-                                            max_grp_id, max_grp_count = k, grp_count
-                                        else:
-                                            group_buffer.update(groups[k])
+                                    near_groups.add(register[j])
 
-                                        segments['finals']['groups'].append((j, k))
-                                        break
+                                    # segments['finals']['groups'].append((j, k))
+                                    break
 
                     # Fusions
                     with perf(6):
 
-                        if len(group_buffer) > 0:
-                            for k in group_buffer:
-                                groups[k] = groups[max_grp_id]
-                                writing[k] += 1
+                        max_group_id, max_count = i, len(groups[i])
 
-                            groups[i] = groups[max_grp_id]
-                            groups[i].update(group_buffer)
+                        for group_id in near_groups:
+                            if len(groups[group_id]) > max_count:
+                                max_group_id, max_count = group_id, len(groups[group_id])
 
-                            group_result.difference_update(groups[max_grp_id])       
-                            group_result.add(max_grp_id)
-                        else:
-                            group_result.add(i)
+                        near_groups.remove(max_group_id)
+
+                        groups_result[i] = set()
+                        groups_result[i].update(groups[i]) # A voir
+
+                        for group_id in near_groups:
+                            groups[max_group_id].update(groups[group_id])
+                            groups_result[max_group_id].update(groups_result[group_id])
+
+                            if group_id in groups_result.keys():
+                                del groups_result[group_id]
+                    
+                            for point_id in groups[group_id]:
+                                register[point_id] = max_group_id
+
+                            register[group_id] = max_group_id
+
+                            # writing[max_group_id] += 1
                 
                 #cercle = [Point([distance * cos(c*pi/10), distance * sin(c*pi/10)]) + point for c in range(20)]
                 #segments['circles'].append([(p1, p2) for p1, p2 in zip(cercle, islice(cycle(cercle), 1, None))])
 
-
-        result = list((len(groups[group_id]) for group_id in group_result))
+        result = list((len(group) for group in groups_result.values()))
         result.sort(reverse=True)
 
         print('\n  ', result, sep='', end='\n')
@@ -396,72 +356,70 @@ def print_components_sizes(distance, points):
     # |  Tests  |
     # x---------x
 
-    make_test = True, False, False, True
+    make_test = False, False, False, True
 
-    # Graphs
-    if make_test[0]:
-        for graph in segments.values():
-            graph_segment = []
+    # # Graphs
+    # if make_test[0]:
+    #     for graph in segments.values():
+    #         graph_segment = []
 
-            for linked_segment in graph.values():
-                graph_segment.append([Segment([points[i], points[j]]) for i, j in linked_segment])
+    #         for linked_segment in graph.values():
+    #             graph_segment.append([Segment([points[i], points[j]]) for i, j in linked_segment])
 
-            tycat(points, *graph_segment)
+    #         tycat(points, *graph_segment)
 
-        print('')
+    #     print('')
 
-    # Comparaisons
-    if make_test[1]:
-        total = 0
+    # # Comparaisons
+    # if make_test[1]:
+    #     total = 0
 
-        for j, i in table(len(points), len(points)):
+    #     for j, i in table(len(points), len(points)):
 
-            total += tests[i][j]
+    #         total += tests[i][j]
 
-            if i == j:
-                print(set_color('--', 'red'), end='')
+    #         if i == j:
+    #             print(set_color('--', 'red'), end='')
 
-            elif tests[i][j] > 0:
-                color = 'yellow'  if tests[j][i] > 0 else \
-                        'gray'    if tests[i][j] > 1 and j in groups[i] else \
-                        'green'   if j in groups[i] else \
-                        'magenta' if tests[i][j] > 1 else 'white'
+    #         elif tests[i][j] > 0:
+    #             color = 'yellow'  if tests[j][i] > 0 else \
+    #                     'magenta' if tests[i][j] > 1 else 'white'
 
-                print(set_color(f"{tests[i][j]:2}", color), end='')
-            else:
-                print(f"  ", end='')
+    #             print(set_color(f"{tests[i][j]:2}", color), end='')
+    #         else:
+    #             print(f"  ", end='')
 
-        print(f"  Total des comparaisons : {total} ({total * 100 / (len(points) * len(points)):.2f}%)", '\n')
-    else:
-        total = 0
+    #     print(f"  Total des comparaisons : {total} ({total * 100 / (len(points) * len(points)):.2f}%)", '\n')
+    # else:
+    #     total = 0
 
-        for i in range(len(points)):
-            for j in range(len(points)):
-                total += tests[i][j]
+    #     for i in range(len(points)):
+    #         for j in range(len(points)):
+    #             total += tests[i][j]
 
-        print(f"  Total des comparaisons : {total} ({total * 100 / (len(points) * len(points)):.2f}%)", '\n')
+    #     print(f"  Total des comparaisons : {total} ({total * 100 / (len(points) * len(points)):.2f}%)", '\n')
 
-    # Écritures
-    if make_test[2]:
-        print('')
-        total = 0
+    # # Écritures
+    # if make_test[2]:
+    #     print('')
+    #     total = 0
 
-        for decimal, step in table(10, len(points) // 10):
-            idx = 10 * step + decimal
+    #     for decimal, step in table(10, len(points) // 10):
+    #         idx = 10 * step + decimal
 
-            if writing[idx] > 0:
-                total += writing[idx]
+    #         if writing[idx] > 0:
+    #             total += writing[idx]
 
-                color = 'magenta' if writing[idx] >  7 else \
-                    'red'     if writing[idx] >  5 else \
-                    'yellow'  if writing[idx] >  1 else \
-                    'green'   if writing[idx] == 1 else 'white'
+    #             color = 'magenta' if writing[idx] >  7 else \
+    #                 'red'     if writing[idx] >  5 else \
+    #                 'yellow'  if writing[idx] >  1 else \
+    #                 'green'   if writing[idx] == 1 else 'white'
 
-                print(set_color(f"{writing[idx]:2}", color), end='')
-            else:
-                print('  ', end='')
+    #             print(set_color(f"{writing[idx]:2}", color), end='')
+    #         else:
+    #             print('  ', end='')
  
-        print(f"  Total des écritures : {total}", '\n')
+    #     print(f"  Total des écritures : {total}", '\n')
 
     # Perfs
     if make_test[3]:
@@ -469,12 +427,14 @@ def print_components_sizes(distance, points):
 
         print(f"  Performances")
         print(f"  - Total : {perf.times[0]:.5f} secondes")
-        print(f"  - Initialisation : {(perf.times[1] * percent):.2f}%")
-        print(f"  - Isolés : {(perf.times[2] * percent):.2f}%")
-        print(f"  - Groupes : {(perf.times[3] * percent):.2f}%")
-        print(f"    * Liens entre groupes: {(perf.times[4] * 100 / perf.times[3]):.2f}%")
-        print(f"    * Liens entre isolés: {(perf.times[5] * 100 / perf.times[3]):.2f}%")
-        print(f"    * Réécriture: {(perf.times[6] * 100 / perf.times[3]):.2f}%")
+        print(f"  - Initialisation : {(perf.times[7] * percent):.2f}%")
+        print(f"  - Boucle :")
+        print(f"    * Initialisation : {(perf.times[1] * percent):.2f}%")
+        print(f"    * Isolés : {(perf.times[2] * percent):.2f}%")
+        print(f"    * Groupes : {(perf.times[3] * percent):.2f}%")
+        print(f"      * Liens entre groupes: {(perf.times[4] * 100 / perf.times[3]):.2f}%")
+        print(f"      * Liens entre isolés: {(perf.times[5] * 100 / perf.times[3]):.2f}%")
+        print(f"      * Réécriture: {(perf.times[6] * 100 / perf.times[3]):.2f}%")
         print("  Nombre de points :",len(points), '\n')
 
     print('  ', result, '\n', sep='')
