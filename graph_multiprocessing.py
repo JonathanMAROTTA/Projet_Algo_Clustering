@@ -1,62 +1,94 @@
 #!/usr/bin/env python3
 
-from multiprocessing import Process, Manager, cpu_count
+from multiprocessing import Process, Manager, Pipe, cpu_count
 
 
 def graph_multiprocessing(keys, analyse_function, static_args, dynamic_args):
-    count    = max(min(len(keys) // 2, cpu_count() - 1), 0)
+    count    = max(min(len(keys) // 2, cpu_count()), 1)
 
     effectif = len(keys) // count
     rest     = len(keys) %  count
+
+    print('')
+    print('  Nombre de processus total :', count)
+    print('  Bucket / processus :', effectif)
+    print('  Reste :', rest)
+    print('')
 
     manager = Manager()
     processes = []
 
     returns = manager.dict()
 
-    # Start
-    for process_id in range(0, count):
-        current = (process_id + 1) * effectif + min(rest, (process_id + 1))
-        subkeys = keys[current + 1:current + effectif + int(process_id + 1 < rest)]
+    # -- Start --
+    main_pipe_send, pipe_recv = Pipe()
+
+    for process_id in range(1, count):
+        current = process_id * effectif + min(rest, process_id)
+        subkeys = keys[current:current + effectif + int(process_id < rest)]
+
+        pipe_send, pipe_next_recv = Pipe()
 
         process = Process(target=process_main, args=(
             process_id, 
             subkeys, 
-            returns, 
-            analyse_function, 
+            returns,
+            (pipe_send, pipe_recv),
+            analyse_function,
             static_args, 
             dynamic_args
         ))
         process.start()
 
         processes.append(process)
-    
-    process_loop(keys[0:effectif + min(rest, 1)], analyse_function, static_args, dynamic_args)
 
-    # Join
+
+        pipe_recv = pipe_next_recv
+
+    process_main(
+        0, 
+        keys[0:effectif + min(rest, 1)], 
+        returns, 
+        (main_pipe_send, None), 
+        analyse_function, 
+        static_args, 
+        dynamic_args
+    )
+
+    # -- Join --
+
     for process_id, process in enumerate(processes):
         process.join()
 
-        for obj, process_obj in zip(dynamic_args, returns[process_id]):
-            obj.update(process_obj)
+    # Fusion
+    for dynamic_copy in returns.values():
+        for obj, return_obj in zip(dynamic_args, dynamic_copy):
+            obj.update(return_obj)
 
-    # Limits
-    for process_id in range(0, count):
-        bucket_id = (process_id + 1) * effectif + min(rest, (process_id + 1))
 
+def process_loop(pipes, subkeys, analyse_function, static_args, dynamic_args):
+    analyse_function(subkeys[-1], static_args, dynamic_args)
+    pipes[0].send(dynamic_args)
+
+    for bucket_id in subkeys[1:-1]:
         analyse_function(bucket_id, static_args, dynamic_args)
 
+    if pipes[1] is not None:
+        dynamic_recv = pipes[1].recv()
 
-def process_loop(subkeys, analyse_function, static_args, dynamic_args):
-    for bucket_id in subkeys:
-        analyse_function(bucket_id, static_args, dynamic_args)
+        for obj, recv_obj in zip(dynamic_args, dynamic_recv):
+            obj.update(recv_obj)
 
-def process_main(process_id, subkeys, returns, analyse_function, static_args, dynamic_args):
+    analyse_function(subkeys[0], static_args, dynamic_args)
+        
+
+
+def process_main(process_id, subkeys, returns, pipes, analyse_function, static_args, dynamic_args):
 
     dynamic_copies = []
     for obj in dynamic_args:
         dynamic_copies.append(obj.copy())
 
-    process_loop(subkeys, analyse_function, static_args, dynamic_copies)
+    process_loop(pipes, subkeys, analyse_function, static_args, dynamic_copies)
 
     returns[process_id] = dynamic_copies

@@ -238,7 +238,6 @@ def analyse_bucket(bucket_id, plan_shortcut, clustering_shortcut):
         bucket_point_id = min(next_index, bucket_point_id)
 
 
-
 def iter_bucket(points, distance, buckets, buckets_begins, current_index, bucket_id):
     point = points[current_index]
 
@@ -301,17 +300,13 @@ def print_components_sizes(distance, points):
 
         with Perf(3):
             graph_multiprocessing(buckets_keys, analyse_bucket, plan_shortcut, clustering_shortcut)
-
-        print('\n  Multiprocessing done...')
-        # print('Affichage des fusions:')
-        # for i, group in fusions.items():
-        #     print(f"  - {i:3} ({points[i][1] // BUCKET_SIZE:2.0f}) : ", end='')
-        #     for j in group:
-        #         print(f"{j:3}, ", end='')
-        #     print('')
+            print('  Multiprocessing done...')
 
 
-        # Isolates link
+        # x----------x
+        # |  Isolés  |
+        # x----------x
+
         with Perf(4):
             buckets_begins = defaultdict(int)
 
@@ -363,18 +358,16 @@ def print_components_sizes(distance, points):
         print('\n  ', counts, sep='', end='\n')
 
 
-        segments = { 'finals': { 'groups': [] } }
-        for i, group in groups.items():
-            for j in group:
-                segments['finals']['groups'].append((points[i], points[j]))
-
-
-
     # x---------x
     # |  Tests  |
     # x---------x
 
     # Graphs
+    segments = { 'finals': { 'groups': [] } }
+    for i, group in groups.items():
+        for j in group:
+            segments['finals']['groups'].append((points[i], points[j]))
+
     if len(points) <= 1000:
         for graph in segments.values():
             graph_segment = []
@@ -385,29 +378,6 @@ def print_components_sizes(distance, points):
             tycat([Point(point) for point in points], *graph_segment)
 
         print('')
-
-    # Comparaisons
-    # if len(points) <= 45:
-    #     for j, i in table(len(points), len(points)):
-
-    #         if i == j:
-    #             print(set_color('--', 'red'), end='')
-
-    #         elif tests[i][j] > 0:
-    #             color = 'magenta' if tests[j][i] > 0 else \
-    #                     'yellow'  if tests[i][j] > 1 else 'white'
-
-    #             print(set_color(f"{tests[i][j]:2}", color), end='')
-    #         else:
-    #             print("  ", end='')
-
-    # total = 0
-    # for line in tests.values():
-    #     for count in line.values():
-    #         total += count
-
-    # print(f"  Total des comparaisons : {total} ({total * 100 / (len(points) * len(points)):.5f}%)", '\n')
-
 
     # -- Performances --
     percent = 100 / Perf.times[0]
