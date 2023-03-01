@@ -9,12 +9,6 @@ def graph_multiprocessing(keys, analyse_function, static_args, dynamic_args):
     effectif = len(keys) // count
     rest     = len(keys) %  count
 
-    print('')
-    print('  Nombre de processus total :', count)
-    print('  Bucket / processus :', effectif)
-    print('  Reste :', rest)
-    print('')
-
     manager = Manager()
     processes = []
 

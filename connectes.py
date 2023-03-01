@@ -4,13 +4,10 @@ compute sizes of all connected components.
 sort and display.
 """
 
-from math import floor
 from sys import argv
-from itertools import islice, cycle, product, groupby
+from itertools import groupby
 from collections import defaultdict
 from time import perf_counter
-import random
-from multiprocessing import Process, Manager
 
 from graph_multiprocessing import graph_multiprocessing
 
@@ -30,64 +27,6 @@ def load_instance(filename):
         points = [tuple(float(f) for f in l.split(",")) for l in lines]
 
     return distance, points
-
-
-# x-------------------x
-# |  Tests functions  |
-# x-------------------x
-
-# Performances
-class Perf():
-    """ Classe simplifiant l'observation des perfs grâce à des "with". """
-
-    times = {}
-
-    def __init__(self, index):
-        """ Permet de choisir sous quel index sotcker la performance. """
-
-        if index not in Perf.times:
-            Perf.times[index] = 0
-
-        self.index = index
-        self.start = 0
-
-    def __enter__(self):
-        """ Call with "with". """
-        self.start = perf_counter()
-
-        return self
-
-    def __exit__(self, type, value, traceback):
-        """ Call after "with" block. """
-
-        Perf.times[self.index] += perf_counter() - self.start
-
-# Tables
-def set_color(text, color):
-    """ Retourne le code couleur demandé. """
-
-    code = '0'
-
-    if color == 'black':
-        code = "30"
-    elif color == 'red':
-        code = "31"
-    elif color == 'green':
-        code = "32"
-    elif color == 'yellow':
-        code = "33"
-    elif color == 'blue':
-        code = "34"
-    elif color == 'magenta':
-        code = "35"
-    elif color == 'cyan':
-        code = "36"
-    elif color == 'white':
-        code = "37"
-    elif color == 'gray':
-        code = "90"
-
-    return f"\x1b[{code}m{text}\x1b[0m"
 
 
 # x----------x
@@ -189,110 +128,61 @@ def print_components_sizes(distance, points):
     affichage des tailles triees de chaque composante
     """
 
-        # x------------------x
-        # |  Initialization  |
-        # x------------------x
+    # x------------------x
+    # |  Initialization  |
+    # x------------------x
 
-        with Perf(1):
-            points.sort()
+    points.sort()
 
-            # Constantes
-            BUCKET_SIZE = distance
+    # Constantes
+    BUCKET_SIZE = distance
 
-            # Buckets
-            buckets = defaultdict(list)
+    # Buckets
+    buckets = defaultdict(list)
 
-            for bucket_id, subgroup in groupby(enumerate(points), lambda point_ref: int(point_ref[1][1] // BUCKET_SIZE)):
-                buckets[bucket_id].extend([i for i, _ in subgroup])
+    for bucket_id, subgroup in groupby(enumerate(points), lambda point_ref: int(point_ref[1][1] // BUCKET_SIZE)):
+        buckets[bucket_id].extend([i for i, _ in subgroup])
 
-            buckets_keys = list(buckets.keys())
-            buckets_keys.sort()
+    buckets_keys = list(buckets.keys())
+    buckets_keys.sort()
 
-            # Clustering
-            register, groups, fusions = ({}, {}, defaultdict(set))
+    # Clustering
+    register, groups, fusions = ({}, {}, defaultdict(set))
             
 
-        # x-------------x
-        # |  Processes  |
-        # x-------------x
+    # x-------------x
+    # |  Processes  |
+    # x-------------x
 
-        with Perf(3):
-            graph_multiprocessing(buckets_keys, analyse_bucket, (points, buckets, distance), (register, groups, fusions))
- 
-        print(f"  Multiprocessing done... {Perf.times[3]:8.5f}s")
-
-        # x-----------x
-        # |  Fusions  |
-        # x-----------x
-
-        # Tests
-        segments = { 'finals': { 'groups': [], 'fusions': [], 'buk': [] } }
-        for i, group in groups.items():
-            for j in group:
-                segments['finals']['groups'].append((points[i], points[j]))
-        for b in buckets.keys():
-            segments['finals']['groups'].append(((0, b * BUCKET_SIZE), (1, b * BUCKET_SIZE)))
-
-        with Perf(7):
-            for i, near_groups in fusions.items():
-
-                # Mise à jour du registre
-                for id in near_groups:
-                    group_id = register[id]
-
-                    segments['finals']['fusions'].append((points[i], points[group_id]))
-
-                    register_id = register[group_id]
-
-                    if register_id != register[i]:
-                        groups[register[i]].update(groups[register_id])
-
-                        for point_id in groups[register_id]:
-                            register[point_id] = register[i]
-
-                        groups.pop(register_id)
+    graph_multiprocessing(buckets_keys, analyse_bucket, (points, buckets, distance), (register, groups, fusions))
 
 
-        # Calcul du résultat
-        counts = list((len(group) for group in groups.values()))
-        counts.sort(reverse=True)
+    # x-----------x
+    # |  Fusions  |
+    # x-----------x
 
-        print('\n  ', counts, sep='', end='\n')
+    for i, near_groups in fusions.items():
+
+        # Mise à jour du registre
+        for id in near_groups:
+            group_id = register[id]
+
+            register_id = register[group_id]
+
+            if register_id != register[i]:
+                groups[register[i]].update(groups[register_id])
+
+                for point_id in groups[register_id]:
+                    register[point_id] = register[i]
+
+                groups.pop(register_id)
 
 
-    # x---------x
-    # |  Tests  |
-    # x---------x
+    # Calcul du résultat
+    counts = list((len(group) for group in groups.values()))
+    counts.sort(reverse=True)
 
-    # Graphs
-
-    if len(points) <= 1000:
-        for graph in segments.values():
-            graph_segment = []
-
-            for linked_segment in graph.values():
-                graph_segment.append([Segment([Point(list(p1)), Point(list(p2))]) for p1, p2 in linked_segment])
-
-            tycat([Point(point) for point in points], *graph_segment)
-
-        print('')
-
-    # -- Performances --
-    percent = 100 / Perf.times[0]
-
-    print('  Performances :')
-
-    print("  x----------x----------------x----------x")
-    print("  | Total    | Sections       | Percents |")
-    print("  x----------x----------------x----------x")
-    print(f"  | {Perf.times[0]:8.5f} | Initialization |   {(Perf.times[1] * percent):5.2f}% |")
-    print("  |          x----------------x----------x")
-    print(f"  |          | Groups         |   {(Perf.times[3] * percent):5.2f}% |")
-    print(f"  |          | Fusions        |   {(Perf.times[7] * percent):5.2f}% |")
-    print("  x----------x----------------x----------x")
-    print("  Nombre de points :",len(points), '\n')
-
-    print('  ', counts, '\n', sep='')
+    print(counts, end='\n')
 
 
 def main():
