@@ -6,7 +6,7 @@ sort and display.
 
 from math import cos, sin, pi, floor
 from sys import argv
-from itertools import islice, cycle, product
+from itertools import islice, cycle, product, groupby
 from collections import defaultdict
 from time import perf_counter
 import random
@@ -66,27 +66,6 @@ class Perf():
         Perf.times[self.index] += perf_counter() - self.start
 
 # Tables
-def _separation(*sizes):
-    """ Affiche une ligne horizontale pour les tables. """
-
-    print('  ', end='')
-
-    for config in sizes:
-        for _ in range(config[1]):
-            print('-' * config[0], 'x', sep='', end='')
-    print('')
-def _head(size, *others):
-    """ Affiche l'en-tête pour les tables. """
-
-    print('     |', end='')
-
-    for i in range(size):
-        print(f" {i:2} |", end="")
-
-    for name in others:
-        print(f" {name} |", end='')
-    print('')
-
 def set_color(text, color):
     """ Retourne le code couleur demandé. """
 
@@ -112,23 +91,6 @@ def set_color(text, color):
         code = "90"
 
     return f"\x1b[{code}m{text}\x1b[0m"
-def table(x_length, y_length):
-    """ Créer un générateur permettant la génération de tables. """
-
-    _head(x_length)
-    _separation((3, 1), (4, x_length))
-
-    for y in range(y_length):
-        print(f"  {y:2} | ", end='')
-
-        for x in range(x_length):
-            yield x, y
-
-            print(" | ", end='')
-
-        print('')
-
-        _separation((3, 1), (4, x_length))
 
 
 # x----------x
@@ -153,110 +115,73 @@ def is_at_distance(point_1, point_2, distance):
 # |  Buckets  |
 # x-----------x
 
-def analyse_bucket(bucket_id, plan_shortcut, clustering_shortcut):
-    buckets_begins = defaultdict(lambda: 0)
+def iter_near(graph_shortcut, limits, bucket_id, point_id):
+
+    # Initialisations
+    points, buckets, distance = graph_shortcut
+
+    bucket = buckets[bucket_id]
+    point = points[point_id]
+
+    # -- Limite --
+
+    # Reculer
+    bucket_in_id = limits[bucket_id] - 1
+    while 0 <= bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] >= point[0] - distance:
+
+        if is_at_distance(point, points[bucket[bucket_in_id]], distance):
+            yield bucket[bucket_in_id]
+        
+        bucket_in_id -= 1
+
+    bucket_in_id, limits[bucket_id] = limits[bucket_id], bucket_in_id + 1
+
+    # Avancer
+    while bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] < point[0] - distance:
+        bucket_in_id += 1
+
+    limits[bucket_id] = bucket_in_id
+
+    # -- Suivants --
+
+    while bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] <= point[0] + distance:
+        
+        if bucket[bucket_in_id] != point_id and is_at_distance(point, points[bucket[bucket_in_id]], distance):
+            yield bucket[bucket_in_id]
+    
+        bucket_in_id += 1
+
+
+def analyse_bucket(bucket_id, graph_shortcut, clustering_shortcut):
 
     # Shortcut development
-    points, buckets, distance = plan_shortcut
+    points, buckets, distance = graph_shortcut
     register, groups, fusions = clustering_shortcut
+    
+    limits = defaultdict(int)
+    for point_id in filter(lambda point_id: point_id not in register.keys(), buckets[bucket_id]):
 
-    bucket_point_id = 0
-    bucket = buckets[bucket_id]
-
-    while bucket_point_id < len(buckets[bucket_id]) and buckets[bucket_id][bucket_point_id] in register.keys():
-        bucket_point_id += 1
-
-    while bucket_point_id < len(bucket):
-
-        # x------------------x
-        # |  Initialization  |
-        # x------------------x
-
-        # Components
-        point_id = bucket[bucket_point_id]
-        point = points[point_id]
-
+        # Initialisations
         groups[point_id] = set([point_id])
         register[point_id] = point_id
 
-        next_index = len(bucket)
-
-        # x----------x
-        # |  Groups  |
-        # x----------x
-
-        # Previous
-        for _, aside_id in iter_bucket(points, distance, buckets, buckets_begins, point_id, bucket_id - 1):
-
-            if is_at_distance(point, points[aside_id], distance):
+        # Itérations
+        for shift in range(0, 2):
+            for aside_id in iter_near(graph_shortcut, limits, bucket_id - shift, point_id):
 
                 if aside_id in register:
 
-                    fusions[point_id].add(register[aside_id])
+                    fusions[point_id].add(aside_id)
 
                 else:
 
                     groups[point_id].add(aside_id)
                     register[aside_id] = point_id
 
-        # Current
-        for bucket_point_id, aside_id in iter_bucket(points, distance, buckets, buckets_begins, point_id, bucket_id):
+                    # Sub analyse
+                    for dbl_shift in range(-2 * shift, 2):
+                        fusions[point_id].update(iter_near(graph_shortcut, limits, bucket_id + dbl_shift, aside_id))
 
-            if aside_id != point_id:
-
-                if aside_id in register:
-
-                    if is_at_distance(point, points[aside_id], distance):
-                        fusions[point_id].add(register[aside_id])
-
-                else:
-                    if is_at_distance(point, points[aside_id], distance):
-                        groups[point_id].add(aside_id)
-                        register[aside_id] = point_id
-                        
-                    else:
-                        next_index = min(next_index, bucket_point_id)
-
-        # Next index
-        while bucket_point_id < len(bucket) and bucket[bucket_point_id] in register.keys():
-            bucket_point_id += 1
-
-        # x-----------x
-        # |  Fusions  |
-        # x-----------x
-
-        # Suppression partielle des set de fusions de taille 1
-        if point_id in fusions and len(fusions[point_id]) == 1:
-            aside_id = fusions[point_id].pop()
-
-            fusions[aside_id].add(point_id)
-            fusions.pop(point_id)
-
-
-
-        # Next 
-        bucket_point_id = min(next_index, bucket_point_id)
-
-
-def iter_bucket(points, distance, buckets, buckets_begins, current_index, bucket_id):
-    point = points[current_index]
-
-    # Observation des buckets à une distance de plus ou moins 4 du bucket courant
-    bucket = buckets[bucket_id]
-
-    i = buckets_begins[bucket_id]
-
-    # Removing
-    while i < len(bucket) and points[bucket[i]][0] <  point[0] - distance:
-        i += 1
-
-    buckets_begins[bucket_id] = i
-
-    # Efficient
-    while i < len(bucket) and points[bucket[i]][0] <= point[0] + distance:
-
-        yield i, bucket[i]
-        i += 1
 
 # x--------x
 # |  Main  |
@@ -281,17 +206,15 @@ def print_components_sizes(distance, points):
 
             # Buckets
             buckets = defaultdict(list)
-            plan_shortcut = (points, buckets, distance)
 
-            for i, point in enumerate(points):
-                buckets[int(point[1] // BUCKET_SIZE)].append(i)
+            for bucket_id, subgroup in groupby(enumerate(points), lambda point_ref: int(point_ref[1][1] // BUCKET_SIZE)):
+                buckets[bucket_id].extend([i for i, _ in subgroup])
 
             buckets_keys = list(buckets.keys())
             buckets_keys.sort()
 
             # Clustering
-            clustering_shortcut = ({}, {}, defaultdict(set))
-            register, groups, fusions = clustering_shortcut
+            register, groups, fusions = ({}, {}, defaultdict(set))
             
 
         # x-------------x
@@ -299,47 +222,31 @@ def print_components_sizes(distance, points):
         # x-------------x
 
         with Perf(3):
-            graph_multiprocessing(buckets_keys, analyse_bucket, plan_shortcut, clustering_shortcut)
-            print('  Multiprocessing done...')
-
-
-        # x----------x
-        # |  Isolés  |
-        # x----------x
-
-        with Perf(4):
-            buckets_begins = defaultdict(int)
-
-            buckets_keys.sort()
-            
-            for bucket_id in buckets_keys:
-
-                buckets_begins.clear()
-
-                for i in buckets[bucket_id]:
-
-                    if i not in fusions.keys():
-
-                        point = points[i]
-
-                        for relative_bucket_id in range(max(bucket_id - 1, 0), bucket_id + 1):
-                            for _, aside_id in iter_bucket(points, distance, buckets, buckets_begins, i, relative_bucket_id):
-
-                                if register[aside_id] != register[i] and register[i] not in fusions[register[aside_id]] and register[aside_id] not in fusions[register[i]]:
-                                    
-                                    if is_at_distance(point, points[aside_id], distance):
-
-                                        fusions[register[i]].add(register[aside_id])
+            graph_multiprocessing(buckets_keys, analyse_bucket, (points, buckets, distance), (register, groups, fusions))
+ 
+        print(f"  Multiprocessing done... {Perf.times[3]:8.5f}s")
 
         # x-----------x
         # |  Fusions  |
         # x-----------x
 
+        # Tests
+        segments = { 'finals': { 'groups': [], 'fusions': [], 'buk': [] } }
+        for i, group in groups.items():
+            for j in group:
+                segments['finals']['groups'].append((points[i], points[j]))
+        for b in buckets.keys():
+            segments['finals']['groups'].append(((0, b * BUCKET_SIZE), (1, b * BUCKET_SIZE)))
+
         with Perf(7):
             for i, near_groups in fusions.items():
 
                 # Mise à jour du registre
-                for group_id in near_groups:
+                for id in near_groups:
+                    group_id = register[id]
+
+                    segments['finals']['fusions'].append((points[i], points[group_id]))
+
                     register_id = register[group_id]
 
                     if register_id != register[i]:
@@ -363,10 +270,6 @@ def print_components_sizes(distance, points):
     # x---------x
 
     # Graphs
-    segments = { 'finals': { 'groups': [] } }
-    for i, group in groups.items():
-        for j in group:
-            segments['finals']['groups'].append((points[i], points[j]))
 
     if len(points) <= 1000:
         for graph in segments.values():
@@ -389,10 +292,7 @@ def print_components_sizes(distance, points):
     print("  x----------x----------------x----------x")
     print(f"  | {Perf.times[0]:8.5f} | Initialization |   {(Perf.times[1] * percent):5.2f}% |")
     print("  |          x----------------x----------x")
-    # print(f"  |          | Initialization |   {(Perf.times[2] * percent):5.2f}% |")
     print(f"  |          | Groups         |   {(Perf.times[3] * percent):5.2f}% |")
-    print(f"  |          | Isolates       |   {(Perf.times[4] * percent):5.2f}% |")
-    # print(f"  |          | Links          |   {(Perf.times[6] * percent):5.2f}% |")
     print(f"  |          | Fusions        |   {(Perf.times[7] * percent):5.2f}% |")
     print("  x----------x----------------x----------x")
     print("  Nombre de points :",len(points), '\n')
