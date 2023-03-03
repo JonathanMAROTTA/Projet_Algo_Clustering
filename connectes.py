@@ -11,6 +11,7 @@ from collections import defaultdict
 from time import perf_counter
 import random
 from multiprocessing import Process, Manager
+from collections import Counter
 
 from graph_multiprocessing import graph_multiprocessing
 
@@ -115,7 +116,7 @@ def is_at_distance(point_1, point_2, distance):
 # |  Buckets  |
 # x-----------x
 
-def iter_near(graph_shortcut, limits, bucket_id, point_id):
+def iter_near(graph_shortcut, limits, limit_id, bucket_id, point_id):
 
     # Initialisations
     points, buckets, distance = graph_shortcut
@@ -126,7 +127,7 @@ def iter_near(graph_shortcut, limits, bucket_id, point_id):
     # -- Limite --
 
     # Reculer
-    bucket_in_id = limits[bucket_id] - 1
+    bucket_in_id = limits[limit_id] - 1
     while 0 <= bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] >= point[0] - distance:
 
         if is_at_distance(point, points[bucket[bucket_in_id]], distance):
@@ -134,13 +135,13 @@ def iter_near(graph_shortcut, limits, bucket_id, point_id):
         
         bucket_in_id -= 1
 
-    bucket_in_id, limits[bucket_id] = limits[bucket_id], bucket_in_id + 1
+    bucket_in_id, limits[limit_id] = limits[limit_id], bucket_in_id + 1
 
     # Avancer
     while bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] < point[0] - distance:
         bucket_in_id += 1
 
-    limits[bucket_id] = bucket_in_id
+    limits[limit_id] = bucket_in_id
 
     # -- Suivants --
 
@@ -152,35 +153,43 @@ def iter_near(graph_shortcut, limits, bucket_id, point_id):
         bucket_in_id += 1
 
 
+def iter_shift(graph_shortcut, limits, bucket_id, point_id, forward = True):
+
+    min_interval = max(bucket_id - int(not forward), 0                     )
+    max_interval = min(bucket_id + int(    forward), len(graph_shortcut[1]))
+
+    for limit_id, shifted_id in enumerate(range(min_interval, max_interval + 1)):
+        yield from iter_near(graph_shortcut, limits, limit_id, shifted_id, point_id)
+
+
 def analyse_bucket(bucket_id, graph_shortcut, clustering_shortcut):
 
     # Shortcut development
-    points, buckets, distance = graph_shortcut
-    register, groups, fusions = clustering_shortcut
-    
-    limits = defaultdict(int)
+    buckets = graph_shortcut[1]
+    register, fusions = clustering_shortcut
+
+    # Analyse
+    limits, limits_aside = [ 0, 0 ], [ 0, 0 ]
+
     for point_id in filter(lambda point_id: point_id not in register.keys(), buckets[bucket_id]):
 
         # Initialisations
-        groups[point_id] = set([point_id])
         register[point_id] = point_id
 
         # Itérations
-        for shift in range(0, 2):
-            for aside_id in iter_near(graph_shortcut, limits, bucket_id - shift, point_id):
+        for aside_id in iter_shift(graph_shortcut, limits, bucket_id, point_id):
+                
+            if aside_id in register:
 
-                if aside_id in register:
+                # Ajout d'une fusion
+                fusions[point_id].add(register[aside_id])
 
-                    fusions[point_id].add(aside_id)
+            else:
+                # Ajout du point courant comme référent
+                register[aside_id] = point_id
 
-                else:
-
-                    groups[point_id].add(aside_id)
-                    register[aside_id] = point_id
-
-                    # Sub analyse
-                    for dbl_shift in range(-2 * shift, 2):
-                        fusions[point_id].update(iter_near(graph_shortcut, limits, bucket_id + dbl_shift, aside_id))
+                # Ajout comme fusion des points proches du point proche du point courant
+                fusions[point_id].update(iter_shift(graph_shortcut, limits_aside, bucket_id, aside_id, False))
 
 
 # x--------x
@@ -214,7 +223,7 @@ def print_components_sizes(distance, points):
             buckets_keys.sort()
 
             # Clustering
-            register, groups, fusions = ({}, {}, defaultdict(set))
+            register, fusions = {}, defaultdict(set)
             
 
         # x-------------x
@@ -222,7 +231,12 @@ def print_components_sizes(distance, points):
         # x-------------x
 
         with Perf(3):
-            graph_multiprocessing(buckets_keys, analyse_bucket, (points, buckets, distance), (register, groups, fusions))
+            graph_multiprocessing(buckets_keys, analyse_bucket, (points, buckets, distance), (register, fusions))
+
+        # À supprimer je pense
+        groups = defaultdict(set)
+        for aside_id, point_id in register.items():
+            groups[point_id].add(aside_id)
  
         print(f"  Multiprocessing done... {Perf.times[3]:8.5f}s")
 
@@ -236,7 +250,7 @@ def print_components_sizes(distance, points):
             for j in group:
                 segments['finals']['groups'].append((points[i], points[j]))
         for b in buckets.keys():
-            segments['finals']['groups'].append(((0, b * BUCKET_SIZE), (1, b * BUCKET_SIZE)))
+            segments['finals']['buk'].append(((0, b * BUCKET_SIZE), (1, b * BUCKET_SIZE)))
 
         with Perf(7):
             for i, near_groups in fusions.items():
@@ -259,8 +273,7 @@ def print_components_sizes(distance, points):
 
 
         # Calcul du résultat
-        counts = list((len(group) for group in groups.values()))
-        counts.sort(reverse=True)
+        counts = sorted(list((len(group) for group in groups.values())), reverse=True)
 
         print('\n  ', counts, sep='', end='\n')
 
