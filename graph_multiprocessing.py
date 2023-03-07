@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-from multiprocessing import Process, Manager, Pipe, cpu_count
+from multiprocessing import Process, Manager, Pipe, cpu_count, Lock
+from time import perf_counter
+from collections import defaultdict
 
-
-def graph_multiprocessing(keys, analyse_function, static_args, dynamic_args):
-    count    = max(min(len(keys) // 4, cpu_count()), 1)
+def graph_multiprocessing(keys, analyse_function, graph):
+    count    = max(min(len(keys) // 3, cpu_count()), 1)
 
     effectif = len(keys) // count
     rest     = len(keys) %  count
@@ -15,80 +16,77 @@ def graph_multiprocessing(keys, analyse_function, static_args, dynamic_args):
     print('  Reste :', rest)
     print('')
 
+    # -- Initialize --
     manager = Manager()
-    processes = []
 
+    register = manager.dict()
     returns = manager.dict()
+    
+    # Locks
+    first_locks = Lock(), Lock()
+    lock_last = first_locks[1]
 
-    # -- Start --
-    main_pipe_send, pipe_recv = Pipe()
+    # -- Run process --
+    processes = []
 
     for process_id in range(1, count):
         current = process_id * effectif + min(rest, process_id)
         subkeys = keys[current:current + effectif + int(process_id < rest)]
 
-        pipe_send, pipe_next_recv = Pipe()
+        lock_first, lock_last = lock_last, Lock()
 
         process = Process(target=process_main, args=(
             process_id, 
             subkeys,
             returns,
-            (pipe_send, pipe_recv),
+            (lock_first, lock_last),
             analyse_function,
-            static_args, 
-            dynamic_args
+            register,
+            graph
         ))
         process.start()
 
         processes.append(process)
 
-
-        pipe_recv = pipe_next_recv
-
     process_main(
         0, 
         keys[0:effectif + min(rest, 1)], 
         returns, 
-        (main_pipe_send, None), 
+        first_locks,
         analyse_function, 
-        static_args, 
-        dynamic_args
+        register,
+        graph
     )
 
-    # -- Join --
-
+    # -- Join process --
     for process_id, process in enumerate(processes):
         process.join()
 
-    # Fusion
-    for dynamic_copy in returns.values():
-        for obj, return_obj in zip(dynamic_args, dynamic_copy):
-            obj.update(return_obj)
+    # -- Return --
+    fusions = defaultdict(set)
+
+    for local_fusions in returns.values():
+        fusions.update(local_fusions)
+
+    return register, fusions
 
 
-def process_loop(pipes, subkeys, analyse_function, static_args, dynamic_args):
-    analyse_function(subkeys[-1], static_args, dynamic_args)
-    analyse_function(subkeys[-2], static_args, dynamic_args)
-    pipes[0].send(dynamic_args)
+def process_main(process_id, subkeys, returns, locks, analyse_function, register, graph):
 
-    for bucket_id in subkeys[2:-2]:
-        analyse_function(bucket_id, static_args, dynamic_args)
+    # -- Initialise --
+    lock_first, lock_last = locks
 
-    if pipes[1] is not None:
-        dynamic_recv = pipes[1].recv()
+    local_fusions = defaultdict(set)
 
-        for obj, recv_obj in zip(dynamic_args, dynamic_recv):
-            obj.update(recv_obj)
-    
-    analyse_function(subkeys[0], static_args, dynamic_args)
-    analyse_function(subkeys[1], static_args, dynamic_args)
-        
+    # -- Run --
+    with lock_first:
+        analyse_function(subkeys[0], register, graph, local_fusions)
 
+    for bucket_id in subkeys[1:-1]:
+        analyse_function(bucket_id, register, graph, local_fusions)
 
-def process_main(process_id, subkeys, returns, pipes, analyse_function, static_args, dynamic_args):
+    with lock_last:
+        analyse_function(subkeys[-1], register, graph, local_fusions)
 
-    dynamic_copies = [obj.copy() for obj in dynamic_args]
-
-    process_loop(pipes, subkeys, analyse_function, static_args, dynamic_copies)
-
-    returns[process_id] = dynamic_copies
+    # -- Return --
+    returns[process_id] = local_fusions
