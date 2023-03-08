@@ -9,7 +9,7 @@ from sys import argv
 from itertools import product, groupby
 from collections import defaultdict
 
-from lib_test import Perf, test_rapport
+from connectes_tests import Perf, test_rapport
 
 
 # x------------------x
@@ -25,7 +25,7 @@ def load_instance(filename):
         lines = iter(instance_file)
         distance = float(next(lines))
         points = [tuple(float(f) for f in l.split(",")) for l in lines]
-
+    print(len(points))
     return distance, points
 
 
@@ -93,27 +93,26 @@ def print_components_sizes(distance, points):
     affichage des tailles triees de chaque composante
     """
 
-    with Perf(0):
+    with Perf("Global", True):
         # x------------------x
         # |  Initialization  |
         # x------------------x
 
-        with Perf(1):
+        with Perf("Global init"):
             points.sort()
 
             # Buckets
 
             # Un "bucket" est une liste des points sur un découpage de l'axe Y.
             # L'intersection entre "buckets" et vide.
-
-            BUCKET_SIZE = distance
             
-            buckets, buckets_limits, buckets_limits_others = defaultdict(list), defaultdict(int), defaultdict(int)
+            buckets = defaultdict(list)
+            buckets_limits, buckets_limits_others = defaultdict(int), defaultdict(int)
 
             graph = (points, buckets, distance)
 
             # A voir
-            for bucket_id, bucket_content in groupby(range(len(points)), lambda point_id: int(points[point_id][1] // BUCKET_SIZE)):
+            for bucket_id, bucket_content in groupby(range(len(points)), lambda point_id: int(points[point_id][1] // distance)):
                 buckets[bucket_id].extend(bucket_content)
 
             # Groups
@@ -123,65 +122,78 @@ def print_components_sizes(distance, points):
 
             register, fusions = {}, defaultdict(set)
 
+        # Tests
+        segments = { 'groups': [], 'fusions': [] }
+
         # x-------------x
         # |  Main loop  |
         # x-------------x
 
-        for point_id in filter(lambda point_id: point_id not in register, range(len(points))):
+        for referent_id in filter(lambda point_id: point_id not in register, range(len(points))):
 
-            point = points[point_id]
+            point = points[referent_id]
 
-            with Perf(2):
+            with Perf("Loop init"):
                 # x------------------x
                 # |  Initialization  |
                 # x------------------x
 
                 # Components
                 x, y = point
-                bucket_id = int(y // BUCKET_SIZE)
+                bucket_id = int(y // distance)
 
                 # Groups
-                register[point_id] = point_id
+                register[referent_id] = referent_id
 
 
             # x----------x
             # |  Groups  |
             # x----------x
 
-            with Perf(3):
+            with Perf("Groups"):
                 # Observation des buckets à une distance de plus ou moins 4 du bucket courant
-                for aside_id in iter_shift(graph, buckets_limits, bucket_id, (-1, 0), point_id):
+                for near_id in iter_shift(graph, buckets_limits, bucket_id, (-1, 0), referent_id):
 
-                    if aside_id not in register.keys():
+                    if near_id not in register.keys():
 
-                        register[aside_id] = point_id
+                        register[near_id] = referent_id
+                        segments['groups'].append((points[referent_id], points[near_id]))
 
-                        fusions[point_id].update(filter(
-                            lambda other_id: 
-                                other_id not in register or (
-                                    register[other_id] != point_id and
-                                    ( register[other_id] not in fusions or point_id           not in fusions[register[other_id]] ) and
-                                    ( point_id           not in fusions or register[other_id] not in fusions[point_id          ] )
+                        fusions[referent_id].update(filter(
+                            lambda far_id: 
+                                far_id not in register or (
+                                    register[far_id] != referent_id and
+                                    ( register[far_id] not in fusions or referent_id        not in fusions[register[far_id]] ) and
+                                    ( referent_id        not in fusions or register[far_id] not in fusions[referent_id       ] )
                                 ) and
-                                not is_at_distance(point, points[other_id], distance),
-                            iter_shift(graph, buckets_limits_others, bucket_id, (-1, +1), aside_id)
+                                not is_at_distance(point, points[far_id], distance),
+                            iter_shift(graph, buckets_limits_others, bucket_id, (-1, +1), near_id)
                         ))
 
                     else:
 
-                        fusions[point_id].add(register[aside_id])
+                        fusions[referent_id].add(register[near_id])
+
+
+        print(f"\n  Fin de la boucle principale : {Perf.times['Groups'][0]:7.4f}s\n")
 
 
         # x-----------x
         # |  Fusions  |
         # x-----------x
 
+        # Tests
+        for point_id, nears in fusions.items():
+            for aside_id in nears:
+                segments['fusions'].append((points[point_id], points[aside_id]))
+        # -----
+
         groups = defaultdict(set)
         for aside_id, point_id in register.items():
             groups[point_id].add(aside_id) 
 
 
-        with Perf(6):
+        with Perf("Fusions"):
             for i, near_groups in fusions.items():
 
                 # Mise à jour du registre
@@ -203,10 +215,16 @@ def print_components_sizes(distance, points):
         counts = list((len(group) for group in groups.values()))
         counts.sort(reverse=True)
 
-    test_rapport(points, buckets, BUCKET_SIZE, groups)
+    test_rapport(points, buckets, distance, groups, segments)
 
     print(counts)
 
+
+# For tests perfs
+def main_perfs(filenames):
+    for instance in filenames:
+        distance, points = load_instance(instance)
+        print_components_sizes(distance, points)
 
 
 def main():
