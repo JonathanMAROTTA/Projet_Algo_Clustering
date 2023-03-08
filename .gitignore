@@ -2,9 +2,8 @@
 __pycache__
 *.pyc
 
-# images ppm et gif
-*.ppm
-*.gif
+# Tests exemples
+.perfs/*
 
 # bazar machintochien
 .DS_STORE
