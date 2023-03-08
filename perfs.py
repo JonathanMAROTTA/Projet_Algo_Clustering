@@ -15,10 +15,10 @@ import matplotlib.pyplot as plt
 DISTANCE_NEGATIVE_10_POW_MIN = 1
 DISTANCE_NEGATIVE_10_POW_MAX = 5
 
-NB_POINTS = 100
+NB_POINTS = 10
 STEP = 1
 
-CALL_COUNT = 1
+CALL_COUNT = 2
 
 
 def main():
