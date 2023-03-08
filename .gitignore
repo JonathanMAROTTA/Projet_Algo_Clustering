@@ -3,7 +3,7 @@ __pycache__
 *.pyc
 
 # Tests exemples
-.perfs/*.txt
+.perfs
 
 # bazar machintochien
 .DS_STORE
