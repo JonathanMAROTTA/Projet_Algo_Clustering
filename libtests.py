@@ -36,6 +36,10 @@ class Perf():
         Perf.times[self.title][0] += perf_counter() - self.start
 
     @staticmethod
+    def reset():
+        Perf.times.clear()
+
+    @staticmethod
     def display():
         main_title = None
         for title in filter(lambda title: Perf.times[title][1], Perf.times):
@@ -84,3 +88,15 @@ def test_rapport(points, buckets, BUCKET_SIZE, groups, segments):
 
     Perf.display()
     print("  Nombre de points :",len(points), '\n')
+
+
+# Ficher de tests
+def printProgressBar(iteration, total):
+    percent = ("{0:.2f}").format(100 * (iteration / float(total)))
+    filledLength = int(50 * iteration // total)
+    bar = '█' * filledLength + '-' * (50 - filledLength)
+
+    print(f'\r  Progression : |{bar}| {percent}%', end = '\r')
+
+    if iteration == total: 
+        print()

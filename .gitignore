@@ -4,6 +4,7 @@ __pycache__
 
 # Tests exemples
 .perfs
+.validity
 
 # bazar machintochien
 .DS_STORE

@@ -9,16 +9,17 @@ from collections import defaultdict
 from time import perf_counter, time
 import connectes
 from multiprocessing import Pool, cpu_count, Manager
-
+import libtests
 import matplotlib.pyplot as plt
+from libtests import Perf
 
 DISTANCE_NEGATIVE_10_POW_MIN = 1
 DISTANCE_NEGATIVE_10_POW_MAX = 5
 
-NB_POINTS = 10
-STEP = 1
+NB_POINTS = 1000
+STEP = 100
 
-CALL_COUNT = 2
+CALL_COUNT = 10
 
 
 def main():
@@ -45,7 +46,7 @@ def main():
             nb_points = step_id * STEP
             sums[nb_points] = 0.0
 
-            printProgressBar(step_id, NB_POINTS // STEP)
+            libtests.printProgressBar(step_id, NB_POINTS // STEP)
 
             for test_number in range(0, CALL_COUNT):
                 with open(f"{os.path.dirname(__file__)}/.perfs/points-{test_number}.txt", "a") as file:
@@ -71,24 +72,13 @@ def main():
     plt.xlabel('Effectif')
     plt.show()
 
-
-def printProgressBar(iteration, total):
-    percent = ("{0:.2f}").format(100 * (iteration / float(total)))
-    filledLength = int(50 * iteration // total)
-    bar = '█' * filledLength + '-' * (50 - filledLength)
-
-    print(f'\r  Progression : |{bar}| {percent}%', end = '\r')
-
-    if iteration == total: 
-        print()
-
-
 def process_main(sums, test_number, nb_points):
     sys.stdout = open(os.devnull, 'w')
 
-    start = perf_counter()
+    Perf.reset()
+ 
     connectes.main_perfs([f".perfs/points-{test_number}.txt"])
-    sums[nb_points] += perf_counter() - start
+    sums[nb_points] += Perf.times["Global"][0]
 
     sys.stdout = sys.__stdout__
 

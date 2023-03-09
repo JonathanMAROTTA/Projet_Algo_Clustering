@@ -9,7 +9,7 @@ from sys import argv
 from itertools import product, groupby
 from collections import defaultdict
 
-from connectes_tests import Perf, test_rapport
+from libtests import Perf, test_rapport
 
 
 # x------------------x
@@ -51,7 +51,7 @@ def is_at_distance(point_1, point_2, distance):
 # |  Buckets  |
 # x-----------x
 
-def iter_near(graph, limits, bucket_id, point_id):
+def iter_near(graph, limits, bucket_id, point_id, forward = None):
 
     # Initialisations
     points, buckets, distance = graph
@@ -70,18 +70,28 @@ def iter_near(graph, limits, bucket_id, point_id):
 
     # -- Suivants --
 
-    while bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] <= point[0] + distance:
+    while bucket_in_id < len(bucket) and bucket[bucket_in_id] < point_id:
         
-        if bucket[bucket_in_id] != point_id and is_at_distance(point, points[bucket[bucket_in_id]], distance):
+        if (not forward or forward is None) and is_at_distance(point, points[bucket[bucket_in_id]], distance):
             yield bucket[bucket_in_id]
 
         bucket_in_id += 1
 
+    bucket_in_id += bucket_in_id < len(bucket) and int(bucket[bucket_in_id] == point_id)
 
-def iter_shift(graph, buckets_limits, bucket_id, relative_interval, point_id):
+    if forward or forward is None:
+        while bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] <= point[0] + distance:
+            
+            if is_at_distance(point, points[bucket[bucket_in_id]], distance):
+                yield bucket[bucket_in_id]
+
+            bucket_in_id += 1
+
+
+def iter_shift(graph, buckets_limits, bucket_id, relative_interval, point_id, forward = None):
 
     for aside_bucket_id in range(max(bucket_id + relative_interval[0], 0), bucket_id + relative_interval[1] + 1):
-        yield from iter_near(graph, buckets_limits, aside_bucket_id, point_id)
+        yield from iter_near(graph, buckets_limits, aside_bucket_id, point_id, forward)
 
 
 # x--------x
@@ -151,8 +161,10 @@ def print_components_sizes(distance, points):
             # x----------x
 
             with Perf("Groups"):
-                # Observation des buckets à une distance de plus ou moins 4 du bucket courant
-                for near_id in iter_shift(graph, buckets_limits, bucket_id, (-1, 0), referent_id):
+                # Observation des buckets à une distance de plus ou moins 2 du bucket courant
+                fusions[referent_id].update(iter_shift(graph, buckets_limits, bucket_id, (-1, 1), referent_id, False))
+
+                for near_id in iter_shift(graph, buckets_limits, bucket_id, (-1, 1), referent_id, True):
 
                     if near_id not in register.keys():
 
@@ -219,12 +231,14 @@ def print_components_sizes(distance, points):
 
     print(counts)
 
+    return counts # To check validity
+
 
 # For tests perfs
 def main_perfs(filenames):
     for instance in filenames:
         distance, points = load_instance(instance)
-        print_components_sizes(distance, points)
+        return print_components_sizes(distance, points)
 
 
 def main():
