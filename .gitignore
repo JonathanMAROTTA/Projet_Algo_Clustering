@@ -1,0 +1,13 @@
+# python generated
+__pycache__
+*.pyc
+
+# Tests exemples
+.perfs
+.validity
+
+# bazar machintochien
+.DS_STORE
+
+# VSCode
+.vscode

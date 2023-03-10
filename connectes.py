@@ -5,11 +5,10 @@ sort and display.
 """
 
 from sys import argv
-from itertools import groupby
-from collections import defaultdict
-from time import perf_counter
+from itertools import product, groupby
+from collections import defaultdict, Counter
 
-from graph_multiprocessing import graph_multiprocessing
+from libtests import Perf, test_rapport
 
 
 # x------------------x
@@ -51,28 +50,18 @@ def is_at_distance(point_1, point_2, distance):
 # |  Buckets  |
 # x-----------x
 
-def iter_near(graph_shortcut, limits, bucket_id, point_id):
+def iter_near(graph, limits, bucket_id, point_id, forward = None):
 
     # Initialisations
-    points, buckets, distance = graph_shortcut
+    points, buckets, distance = graph
 
     bucket = buckets[bucket_id]
     point = points[point_id]
 
-    # -- Limite --
+    # -- Before limit --
 
-    # Reculer
-    bucket_in_id = limits[bucket_id] - 1
-    while 0 <= bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] >= point[0] - distance:
+    bucket_in_id = limits[bucket_id]
 
-        if is_at_distance(point, points[bucket[bucket_in_id]], distance):
-            yield bucket[bucket_in_id]
-        
-        bucket_in_id -= 1
-
-    bucket_in_id, limits[bucket_id] = limits[bucket_id], bucket_in_id + 1
-
-    # Avancer
     while bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] < point[0] - distance:
         bucket_in_id += 1
 
@@ -80,44 +69,42 @@ def iter_near(graph_shortcut, limits, bucket_id, point_id):
 
     # -- Suivants --
 
-    while bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] <= point[0] + distance:
+    while bucket_in_id < len(bucket) and bucket[bucket_in_id] < point_id:
         
-        if bucket[bucket_in_id] != point_id and is_at_distance(point, points[bucket[bucket_in_id]], distance):
+        if (not forward or forward is None) and is_at_distance(point, points[bucket[bucket_in_id]], distance):
             yield bucket[bucket_in_id]
-    
+
         bucket_in_id += 1
 
+    bucket_in_id += bucket_in_id < len(bucket) and int(bucket[bucket_in_id] == point_id)
 
-def analyse_bucket(bucket_id, graph_shortcut, clustering_shortcut):
+    if forward or forward is None:
+        while bucket_in_id < len(bucket) and points[bucket[bucket_in_id]][0] <= point[0] + distance:
+            
+            if is_at_distance(point, points[bucket[bucket_in_id]], distance):
+                yield bucket[bucket_in_id]
 
-    # Shortcut development
-    points, buckets, distance = graph_shortcut
-    register, groups, fusions = clustering_shortcut
-    
-    limits = defaultdict(int)
-    for point_id in filter(lambda point_id: point_id not in register.keys(), buckets[bucket_id]):
+            bucket_in_id += 1
 
-        # Initialisations
-        groups[point_id] = set([point_id])
-        register[point_id] = point_id
+def iter_shift(graph, buckets_limits, bucket_id, relative_interval, point_id, forward = None):
 
-        # Itérations
-        for shift in range(0, 2):
-            for aside_id in iter_near(graph_shortcut, limits, bucket_id - shift, point_id):
+    for aside_bucket_id in range(max(bucket_id + relative_interval[0], 0), bucket_id + relative_interval[1] + 1):
+        yield from iter_near(graph, buckets_limits, aside_bucket_id, point_id, forward)
 
-                if aside_id in register:
 
-                    fusions[point_id].add(aside_id)
+# x------------x
+# |  Register  |
+# x------------x
 
-                else:
+def register_add(register, referent_id, near_id, wait_to_add, fusions):
+    register[near_id] = referent_id
+    for old_ref_id in filter(
+            lambda old_ref_id : referent_id != old_ref_id and ( referent_id not in fusions or old_ref_id not in fusions[referent_id] ), 
+            wait_to_add[near_id]
+        ):
+        fusions[old_ref_id].add(referent_id)
 
-                    groups[point_id].add(aside_id)
-                    register[aside_id] = point_id
-
-                    # Sub analyse
-                    for dbl_shift in range(-2 * shift, 2):
-                        fusions[point_id].update(iter_near(graph_shortcut, limits, bucket_id + dbl_shift, aside_id))
-
+    wait_to_add[near_id].clear()
 
 # x--------x
 # |  Main  |
@@ -133,6 +120,28 @@ def print_components_sizes(distance, points):
     # x------------------x
 
     points.sort()
+
+    # Buckets
+
+    # Un "bucket" est une liste des points sur un découpage de l'axe Y.
+    # L'intersection entre "buckets" et vide.
+    
+    buckets = defaultdict(list)
+    buckets_limits, buckets_limits_others = defaultdict(int), defaultdict(int)
+
+    graph = (points, buckets, distance)
+
+    # A voir
+    for bucket_id, bucket_content in groupby(range(len(points)), lambda point_id: int(points[point_id][1] // distance)):
+        buckets[bucket_id].extend(bucket_content)
+
+    # Groups
+
+    # Le registre est la liste des correspondances (point, point référent).
+    # groups est l'état partiel courant des groupes et results en est l'état final.
+
+    register, fusions = {}, defaultdict(set)
+    wait_to_add = defaultdict(set)
 
     # Constantes
     BUCKET_SIZE = distance
@@ -154,35 +163,141 @@ def print_components_sizes(distance, points):
     # |  Processes  |
     # x-------------x
 
-    graph_multiprocessing(buckets_keys, analyse_bucket, (points, buckets, distance), (register, groups, fusions))
+    for referent_id in filter(lambda point_id: point_id not in register, range(len(points))):
+
+        point = points[referent_id]
+
+        # x------------------x
+        # |  Initialization  |
+        # x------------------x
+
+        # Components
+        x, y = point
+        bucket_id = int(y // distance)
+
+        # Groups
+        register_add(register, referent_id, referent_id, wait_to_add, fusions)
+
+
+        # x----------x
+        # |  Groups  |
+        # x----------x
+
+        # Observation des buckets à une distance de plus ou moins 2 du bucket courant
+        for near_id in filter(
+                lambda near_id: register[near_id] != referent_id and referent_id not in fusions[register[near_id]], 
+                iter_shift(graph, buckets_limits, bucket_id, (-1, 1), referent_id, False)
+            ):
+            fusions[referent_id].add(register[near_id])
+
+        for near_id in iter_shift(graph, buckets_limits, bucket_id, (-1, 1), referent_id, True):
+
+            if near_id not in register.keys():
+
+                register_add(register, referent_id, near_id, wait_to_add, fusions)
+
+                for far_id in filter(
+                        lambda far_id: 
+                            far_id not in register or (
+                                register[far_id] != referent_id and
+                                ( register[far_id] not in fusions or referent_id      not in fusions[register[far_id]] ) and
+                                ( referent_id      not in fusions or register[far_id] not in fusions[referent_id     ] )
+                            ) and
+                            not is_at_distance(point, points[far_id], distance),
+                        iter_shift(graph, buckets_limits_others, bucket_id, (-1, +1), near_id)
+                    ):
+
+                    if far_id in register.keys():
+                        fusions[referent_id].add(register[far_id])
+                    else:
+                        wait_to_add[far_id].add(referent_id)
+                    
+            elif register[near_id] != referent_id and referent_id not in fusions[register[near_id]]:
+                fusions[referent_id].add(register[near_id])
 
 
     # x-----------x
     # |  Fusions  |
     # x-----------x
 
-    for i, near_groups in fusions.items():
-
-        # Mise à jour du registre
-        for id in near_groups:
-            group_id = register[id]
-
-            register_id = register[group_id]
-
-            if register_id != register[i]:
-                groups[register[i]].update(groups[register_id])
-
-                for point_id in groups[register_id]:
-                    register[point_id] = register[i]
-
-                groups.pop(register_id)
-
-
     # Calcul du résultat
-    counts = list((len(group) for group in groups.values()))
-    counts.sort(reverse=True)
+    counts = fusion(register, fusions)
 
-    print(counts, end='\n')
+    print(sorted(counts, reverse=True))
+
+    return sorted(counts, reverse=True) # To check validity
+
+
+def init_counts(register):
+    """
+    Create a dict of :\n
+    key = centroid\n
+    value = number of points in group[key]
+    """
+    counts = defaultdict(int)
+
+    for _, point_id in register.items():
+        counts[point_id] += 1
+
+    return counts
+    
+
+def fusion(register, fusions):
+    """Réalise la fusion des points dans des groupes définitifs"""
+
+    counts = init_counts(register)
+
+    # c1 ----> c2 ----> c3 ----> c1
+    # c1       c2       c3       c1
+
+    # c1 -> c2 ; c3 -> c2
+    # c1    c2 ; c3    c2
+    # c1    c1 ; c3    c1
+    # c1    c1 ; c1    c1
+
+    # On peut voir fusion comme la gestion de différents arbres.
+
+    # fusions   ; key   : referent_id
+    #           ; value : set(referent_id)
+
+    # fusions   ; key   : node_id
+    #           ; value : set(node_id)
+
+    for node, nodes_to_merge in fusions.items():
+
+        # Recherche de la racine
+        root = register[node]
+        while root != register[root]:
+            root = register[root]
+
+        register[node] = root
+
+
+        for node_to_merge in nodes_to_merge:
+
+            # Recherche de la racine
+            root_to_merge = register[node_to_merge]
+            while root_to_merge != register[root_to_merge]:
+                root_to_merge = register[root_to_merge]
+
+            register[node_to_merge] = root_to_merge
+
+
+            if root != root_to_merge:
+
+                # Ajout du compte de points dans l'arbre d'identifiant root_to_merge
+                counts[root] += counts[root_to_merge]
+
+                # Suppression de l'arbre d'identifiant root_to_merge
+                register[root_to_merge] = root
+                del counts[root_to_merge]
+
+    return list(number_of_child for number_of_child in counts.values())
+
+
+# For tests perfs
+def main_perfs(distance, points):
+    return print_components_sizes(distance, points)
 
 
 def main():
