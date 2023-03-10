@@ -80,7 +80,7 @@ def test_rapport(points, buckets, BUCKET_SIZE, groups, segments):
         for linked_segment in segments.values():
             graph_segment.append([Segment([Point(list(p1)), Point(list(p2))]) for p1, p2 in linked_segment])
 
-        # tycat([Point(point) for point in points], *graph_segment)
+        tycat([Point(point) for point in points], *graph_segment)
 
         print('')
 

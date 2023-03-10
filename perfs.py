@@ -14,12 +14,12 @@ import matplotlib.pyplot as plt
 from libtests import Perf
 from geo.point import Point
 
-DISTANCES = [ 0.1, 0.05, 0.01 ]
+DISTANCES = [ 0.1, 0.075, 0.05, 0.025 ]
 
 NB_POINTS = 10000
 STEP = 1000
 
-CALL_PRECISION = 10
+CALL_PRECISION = 100
 
 
 def main():
