@@ -235,10 +235,8 @@ def print_components_sizes(distance, points):
 
 
 # For tests perfs
-def main_perfs(filenames):
-    for instance in filenames:
-        distance, points = load_instance(instance)
-        return print_components_sizes(distance, points)
+def main_perfs(distance, points):
+    return print_components_sizes(distance, points)
 
 
 def main():

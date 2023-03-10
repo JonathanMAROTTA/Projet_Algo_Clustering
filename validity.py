@@ -2,8 +2,10 @@
 
 from itertools import combinations
 from collections import defaultdict
+from multiprocessing import Pool, cpu_count, Manager, Process
 import sys
 import os
+from time import sleep
 
 from geo.point import Point
 from geo.tycat   import tycat
@@ -12,61 +14,72 @@ import libtests
 import connectes
 
 GRAPH_SIZE = 4
-DISTANCE = 1.5
+DISTANCE = 1
 
 def main():
     print()
 
-    for nb_points in range(1, GRAPH_SIZE * GRAPH_SIZE + 1):
+    manager = Manager()
 
-        libtests.printProgressBar(nb_points, GRAPH_SIZE * GRAPH_SIZE)
+    progress = manager.Value(int, 0)
 
-        for graph in combinations(range(GRAPH_SIZE * GRAPH_SIZE), nb_points):
+    progress_process = Process(target=progress_main, args=(progress, 2 ** ( GRAPH_SIZE * GRAPH_SIZE )))
+    progress_process.start()
 
-            points = []
-            groups = defaultdict(set)
-            register = {}
+    with Pool(cpu_count() - 1) as pool:
+        for nb_points in range(1, GRAPH_SIZE * GRAPH_SIZE + 1):
 
-            with open('.validity/points.txt', 'w+') as file:
-                file.write(f"{DISTANCE}\n")
+            for graph in combinations(range(GRAPH_SIZE * GRAPH_SIZE), nb_points):
+                pool.apply_async(process_main, (progress, graph))
 
-                for value in graph:
-                    x, y = value % GRAPH_SIZE, value // GRAPH_SIZE
-                    file.write(f"{x}, {y}\n")
+    progress_process.terminate()
 
-                    points.append(Point((x, y)))
+    print("\n  Validation terminée !\n")
 
-            for point_id in range(len(points)):
-                register[point_id] = point_id
-                groups[point_id].add(point_id)
 
-            for point_id, aside_id in filter(lambda duo: register[duo[0]] != register[duo[1]] and points[duo[0]].distance_to(points[duo[1]]) <= DISTANCE, combinations(range(len(points)), 2)):
+def progress_main(current, total):
+    while True:
+        libtests.printProgressBar(current.value, total)
+        sleep(0.5)
 
-                old_ref = register[aside_id]
-                groups[register[point_id]].update(groups[old_ref])
+def process_main(progress, graph):
+    progress.value += 1
 
-                for other_id in groups[old_ref]:
-                    register[other_id] = register[point_id]
+    points = [(value % GRAPH_SIZE, value // GRAPH_SIZE) for value in graph]
 
-                groups.pop(old_ref)
+    groups = defaultdict(set)
+    register = {}
 
-            counts = list((len(group) for group in groups.values()))
-            counts.sort(reverse=True)
-                
-            sys.stdout = open(os.devnull, 'w')
-            project_counts = connectes.main_perfs([".validity/points.txt"])    
-            sys.stdout = sys.__stdout__
+    for point_id in range(len(points)):
+        register[point_id] = point_id
+        groups[point_id].add(point_id)
 
-            if counts != project_counts:
-                print('\n  --', 'Erreur', '--')
-                print('  Attendu : ', counts)
-                print('\n  Résultat : ', project_counts)
+    for point_id, aside_id in filter(lambda duo: register[duo[0]] != register[duo[1]] and connectes.is_at_distance(points[duo[0]], points[duo[1]], DISTANCE), combinations(range(len(points)), 2)):
 
-                tycat(points)
+        old_ref = register[aside_id]
+        groups[register[point_id]].update(groups[old_ref])
 
-                return
+        for other_id in groups[old_ref]:
+            register[other_id] = register[point_id]
 
-    print()
+        groups.pop(old_ref)
+
+    counts = list((len(group) for group in groups.values()))
+    counts.sort(reverse=True)
+        
+    sys.stdout = open(os.devnull, 'w')
+    
+    project_counts = connectes.main_perfs(DISTANCE, points)    
+    
+    sys.stdout.close()
+    sys.stdout = sys.__stdout__
+
+    if counts != project_counts:
+        print('\n  --', 'Erreur', '--')
+        print('  Attendu : ', counts)
+        print('\n  Résultat : ', project_counts)
+
+        tycat(points)
 
 
 if __name__ == '__main__':

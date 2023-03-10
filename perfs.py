@@ -6,80 +6,98 @@ from sys import argv
 from itertools import product
 from random import uniform
 from collections import defaultdict
-from time import perf_counter, time
+from time import perf_counter, time, sleep
 import connectes
-from multiprocessing import Pool, cpu_count, Manager
+from multiprocessing import Pool, cpu_count, Manager, Process
 import libtests
 import matplotlib.pyplot as plt
 from libtests import Perf
+from geo.point import Point
 
-DISTANCE_NEGATIVE_10_POW_MIN = 1
-DISTANCE_NEGATIVE_10_POW_MAX = 5
+DISTANCES = [ 0.1, 0.05, 0.01 ]
 
-NB_POINTS = 1000
-STEP = 100
+NB_POINTS = 10000
+STEP = 1000
 
-CALL_COUNT = 10
+CALL_PRECISION = 10
 
 
 def main():
     print()
+    plt.ylabel('AVG Times')
+    plt.xlabel('Effectif')
 
     manager = Manager()
 
-    results = []
+    # Build sums
     sums = manager.dict()
-    averages = defaultdict(float)
+    for dist_key in range(len(DISTANCES)):
+        sums[dist_key] = manager.list()
 
-    for negative_pow in range(DISTANCE_NEGATIVE_10_POW_MIN, DISTANCE_NEGATIVE_10_POW_MAX + 1):
-    
-        sums.clear()
-        distance = 10**(-negative_pow)
+        for step_id in range(NB_POINTS // STEP):
+            sums[dist_key].append(0.0)
 
-        # Create files
-        for test_number in range(0, CALL_COUNT):
-            with open(f"{os.path.dirname(__file__)}/.perfs/points-{test_number}.txt", "w+") as file:
-                file.write(f'{distance}\n')
+    progress = manager.Value(int, 0)
 
-        for step_id in range(1, ( NB_POINTS // STEP ) + 1):
-       
-            nb_points = step_id * STEP
-            sums[nb_points] = 0.0
+    progress_process = Process(target=progress_main, args=(progress, len(DISTANCES) * (NB_POINTS // STEP) * CALL_PRECISION))
+    progress_process.start()
 
-            libtests.printProgressBar(step_id, NB_POINTS // STEP)
+    for prog_call in range (1, CALL_PRECISION + 1):
+        points_lists = []
 
-            for test_number in range(0, CALL_COUNT):
-                with open(f"{os.path.dirname(__file__)}/.perfs/points-{test_number}.txt", "a") as file:
-                    file.write(f"{uniform(0,1)}, {uniform(0,1)}\n" * STEP)
+        # For each steps
+        pool = Pool(cpu_count() - 1)
 
-            pool = Pool(cpu_count())
+        for step_id in range(NB_POINTS // STEP):
 
-            for test_number in range(0, CALL_COUNT):
-                # process_main(sums, test_number, nb_points)
-                pool.apply_async(process_main, (sums, test_number, nb_points))
-                    
-            pool.close()
-            pool.join()
-                
-            averages[nb_points] = sums[nb_points] / float(CALL_COUNT)
+            # Add points
+            points_lists.extend((uniform(0,1), uniform(0,1)) for _ in range(STEP))
+            points_copy = points_lists.copy()
 
-        results.append(averages.copy())
+            # For each negative pow
+            for dist_key, distance in enumerate(DISTANCES):
+                pool.apply_async(process_main, (progress, sums, dist_key, step_id, distance, points_copy))
 
-    for i, result in enumerate(results):
-        plt.plot([effectif for effectif in result.keys()], [time for time in result.values()], ['r','b','g','m','y'][i])
-   
-    plt.ylabel('AVG Times')
-    plt.xlabel('Effectif')
+        pool.close()
+        pool.join()
+
+        averages = defaultdict(list)
+        for dist_key in range(len(DISTANCES)):
+            for step_id in range(NB_POINTS // STEP):
+                averages[dist_key].append(sums[dist_key][step_id] / float(prog_call))
+
+        plt.clf()
+
+        for dist_key, result in averages.items():
+            plt.plot([(step + 1) * STEP for step in range(len(result))], result, ['r','b','g','m','y'][dist_key])
+
+        plt.legend(DISTANCES)
+
+        # plt.show()
+        plt.pause(0.05)
+
+    progress_process.terminate()
+    print("\n  Au revoir !\n")
+
     plt.show()
 
-def process_main(sums, test_number, nb_points):
+
+def progress_main(current, total):
+    while True:
+        libtests.printProgressBar(current.value, total)
+        sleep(0.5)
+
+def process_main(progress, sums, dist_key, step_id, distance, points):
     sys.stdout = open(os.devnull, 'w')
 
     Perf.reset()
  
-    connectes.main_perfs([f".perfs/points-{test_number}.txt"])
-    sums[nb_points] += Perf.times["Global"][0]
+    progress.value += 1
 
+    connectes.main_perfs(distance, points)
+    sums[dist_key][step_id] += Perf.times["Global"][0]
+
+    sys.stdout.close()
     sys.stdout = sys.__stdout__
 
 if __name__ == '__main__':
