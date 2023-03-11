@@ -242,26 +242,11 @@ def print_components_sizes(distance, points):
 
     cluster_to_merge = defaultdict(set)
     wait_to_merge    = defaultdict(set)
-
-    # Constantes
-    BUCKET_SIZE = distance
-
-    # Buckets
-    buckets = defaultdict(list)
-
-    for bucket_id, subgroup in groupby(enumerate(points), lambda point_ref: int(point_ref[1][1] // BUCKET_SIZE)):
-        buckets[bucket_id].extend([i for i, _ in subgroup])
-
-    buckets_keys = list(buckets.keys())
-    buckets_keys.sort()
-
-    # Clustering
-    register, groups, fusions = ({}, {}, defaultdict(set))
             
 
-    # x-------------x
-    # |  Processes  |
-    # x-------------x
+    # x--------x
+    # |  Loop  |
+    # x--------x
 
     # Itération sur les points n'ayant pas de référents
     for referent_id in filter(lambda point_id: point_id not in referents, range(len(points))):

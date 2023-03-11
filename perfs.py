@@ -16,8 +16,8 @@ from geo.point import Point
 
 DISTANCES = [ 0.1, 0.075, 0.05, 0.025 ]
 
-NB_POINTS = 1000
-STEP = 100
+NB_POINTS = 10000
+STEP = 1000
 
 CALL_PRECISION = 20
 
