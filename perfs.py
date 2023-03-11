@@ -16,10 +16,10 @@ from geo.point import Point
 
 DISTANCES = [ 0.1, 0.075, 0.05, 0.025 ]
 
-NB_POINTS = 10000
-STEP = 1000
+NB_POINTS = 1000
+STEP = 100
 
-CALL_PRECISION = 100
+CALL_PRECISION = 20
 
 
 def main():
@@ -94,8 +94,10 @@ def process_main(progress, sums, dist_key, step_id, distance, points):
  
     progress.value += 1
 
-    connectes.main_perfs(distance, points)
-    sums[dist_key][step_id] += Perf.times["Global"][0]
+    with Perf("perf"):
+        connectes.main_perfs(distance, points)
+    
+    sums[dist_key][step_id] += Perf.times["perf"][0]
 
     sys.stdout.close()
     sys.stdout = sys.__stdout__
