@@ -203,7 +203,7 @@ def referents_add(referents, cluster_to_merge, wait_to_merge, referent_id, point
 
     # Ajout d'une fusion pour chaque fusion en attente pour le point point_id
     for old_ref_id in filter(
-            lambda old_ref_id : referent_id != old_ref_id and ( referent_id not in cluster_to_merge or old_ref_id not in cluster_to_merge[referent_id] ), 
+            lambda old_ref_id : not_already_merged(referents, cluster_to_merge, referent_id, old_ref_id), 
             wait_to_merge[point_id]
         ):
         cluster_to_merge[old_ref_id].add(referent_id)
@@ -282,7 +282,7 @@ def print_components_sizes(distance, points):
                 # - de bonne distance au point courant
 
                 for near_id in filter(
-                        lambda near_id: referents[near_id] != referent_id and referent_id not in cluster_to_merge[referents[near_id]], 
+                        lambda near_id: not_already_merged(referents, cluster_to_merge, referent_id, near_id), 
                         iter_shift(graph, cuts_limits, cut_id, (-1, 1), referent_id, False)
                     ):
                     cluster_to_merge[referent_id].add(referents[near_id])
@@ -320,7 +320,7 @@ def print_components_sizes(distance, points):
                                 # Ajout d'une fusion future
                                 wait_to_merge[far_id].add(referent_id)
                             
-                    elif referents[near_id] != referent_id and referent_id not in cluster_to_merge[referents[near_id]]:
+                    elif not_already_merged(referents, cluster_to_merge, referent_id, near_id):
 
                         # Ajout d'une fusion
                         cluster_to_merge[referent_id].add(referents[near_id])
