@@ -230,8 +230,8 @@ def print_components_sizes(distance, points):
             # Cuts
             cuts = defaultdict(list)
 
-            for cut_key, cut_content in groupby(range(len(points)), lambda point_id: int(points[point_id][1] // distance)):
-                cuts[cut_key].extend(cut_content)
+            for cuts_key, cut_content in groupby(range(len(points)), lambda point_id: int(points[point_id][1] // distance)):
+                cuts[cuts_key].extend(cut_content)
 
             # Limits
             cuts_limits, cuts_limits_others = defaultdict(int), defaultdict(int)
@@ -264,7 +264,7 @@ def print_components_sizes(distance, points):
 
                 # Components
                 y = point[1]
-                cut_id = int(y // distance)
+                cuts_key = int(y // distance)
 
                 # Le référent du point proche devient lui-même
                 referents_add(referents, cluster_to_merge, wait_to_merge, referent_id, referent_id)
@@ -283,7 +283,7 @@ def print_components_sizes(distance, points):
 
                 for near_id in filter(
                         lambda near_id: not_already_merged(referents, cluster_to_merge, referent_id, near_id), 
-                        iter_shift(graph, cuts_limits, cut_id, (-1, 1), referent_id, False)
+                        iter_shift(graph, cuts_limits, cuts_key, (-1, 1), referent_id, False)
                     ):
                     cluster_to_merge[referent_id].add(referents[near_id])
 
@@ -291,7 +291,7 @@ def print_components_sizes(distance, points):
                 # - d'abscisse supérieure au point courant
                 # - de bonne distance au point courant
 
-                for near_id in iter_shift(graph, cuts_limits, cut_id, (-1, 1), referent_id, True):
+                for near_id in iter_shift(graph, cuts_limits, cuts_key, (-1, 1), referent_id, True):
 
                     if near_id not in referents.keys():
 
@@ -308,7 +308,7 @@ def print_components_sizes(distance, points):
                         for far_id in filter(
                                 lambda far_id: not_already_merged(referents, cluster_to_merge, referent_id, far_id) and
                                     not is_at_distance(point, points[far_id], distance),
-                                iter_shift(graph, cuts_limits_others, cut_id, (-1, +1), near_id)
+                                iter_shift(graph, cuts_limits_others, cuts_key, (-1, +1), near_id)
                             ):
 
                             if far_id in referents.keys():
