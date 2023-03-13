@@ -8,8 +8,6 @@ from sys import argv
 from itertools import groupby
 from collections import defaultdict
 
-from libtests import Perf, test_rapport
-
 
 # x------------------x
 # |  File Managment  |
@@ -154,7 +152,7 @@ def iter_shift(graph, cuts_limits, cuts_key, relative_interval, point_id, forwar
           de cuts) inférieurs à la valeur ne peuvent être à bonne distance
     """
 
-    for aside_cut_id in range(max(cuts_key + relative_interval[0], 0), cuts_key + relative_interval[1] + 1):
+    for aside_cut_id in range(cuts_key + relative_interval[0], cuts_key + relative_interval[1] + 1):
         yield from iter_near(graph, cuts_limits, aside_cut_id, point_id, forward)
 
 
@@ -259,7 +257,7 @@ def print_components_sizes(distance, points):
 
         # Components
         y = point[1]
-        cut_id = int(y // distance)
+        cuts_key = int(y // distance)
 
         # Le référent du point proche devient lui-même
         referents_add(referents, cluster_to_merge, wait_to_merge, referent_id, referent_id)
@@ -270,14 +268,13 @@ def print_components_sizes(distance, points):
         # x----------x
 
         # Itération sur les points :
-        # - de référent différent du point courant
-        # - non fusionné avec le cluster courant
-        # - d'abscisse inférieure au point courant
-        # - de bonne distance au point courant
+        # - de bonne distance du point proche
+        # - non à bonne distance du point courant
+        # - non déjà fusionné avec le point courant
 
         for near_id in filter(
                 lambda near_id: not_already_merged(referents, cluster_to_merge, referent_id, near_id), 
-                iter_shift(graph, cuts_limits, cut_id, (-1, 1), referent_id, False)
+                iter_shift(graph, cuts_limits, cuts_key, (-1, 1), referent_id, False)
             ):
             cluster_to_merge[referent_id].add(referents[near_id])
 
@@ -285,7 +282,7 @@ def print_components_sizes(distance, points):
         # - d'abscisse supérieure au point courant
         # - de bonne distance au point courant
 
-        for near_id in iter_shift(graph, cuts_limits, cut_id, (-1, 1), referent_id, True):
+        for near_id in iter_shift(graph, cuts_limits, cuts_key, (-1, 1), referent_id, True):
 
             if near_id not in referents.keys():
 
@@ -300,7 +297,7 @@ def print_components_sizes(distance, points):
                 for far_id in filter(
                         lambda far_id: not_already_merged(referents, cluster_to_merge, referent_id, far_id) and
                             not is_at_distance(point, points[far_id], distance),
-                        iter_shift(graph, cuts_limits_others, cut_id, (-1, +1), near_id)
+                        iter_shift(graph, cuts_limits_others, cuts_key, (-1, +1), near_id)
                     ):
 
                     if far_id in referents.keys():
@@ -311,7 +308,7 @@ def print_components_sizes(distance, points):
 
                         # Ajout d'une fusion future
                         wait_to_merge[far_id].add(referent_id)
-                    
+            
             elif not_already_merged(referents, cluster_to_merge, referent_id, near_id):
 
                 # Ajout d'une fusion
@@ -348,22 +345,6 @@ def fusion(referents, cluster_to_merge):
     """Réalise la fusion des points dans des groupes définitifs"""
 
     counts = init_counts(referents)
-
-    # c1 ----> c2 ----> c3 ----> c1
-    # c1       c2       c3       c1
-
-    # c1 -> c2 ; c3 -> c2
-    # c1    c2 ; c3    c2
-    # c1    c1 ; c3    c1
-    # c1    c1 ; c1    c1
-
-    # On peut voir fusion comme la gestion de différents arbres.
-
-    # cluster_to_merge   ; key   : referent_id
-    #           ; value : set(referent_id)
-
-    # cluster_to_merge   ; key   : node_id
-    #           ; value : set(node_id)
 
     for node, nodes_to_merge in cluster_to_merge.items():
 
