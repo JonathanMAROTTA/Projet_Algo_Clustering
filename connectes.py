@@ -154,7 +154,7 @@ def iter_shift(graph, cuts_limits, cuts_key, relative_interval, point_id, forwar
           de cuts) inférieurs à la valeur ne peuvent être à bonne distance
     """
 
-    for aside_cut_id in range(max(cuts_key + relative_interval[0], 0), cuts_key + relative_interval[1] + 1):
+    for aside_cut_id in range(cuts_key + relative_interval[0], cuts_key + relative_interval[1] + 1):
         yield from iter_near(graph, cuts_limits, aside_cut_id, point_id, forward)
 
 
